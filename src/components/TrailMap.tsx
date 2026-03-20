@@ -16,54 +16,6 @@ export interface MapProperty {
   latitude: number;
 }
 
-// Cotswold Way trail path coordinates (north to south, 44 waypoints)
-const TRAIL_PATH: [number, number][] = [
-  [-1.7798, 52.0536], // Chipping Campden
-  [-1.7870, 52.0590], // Dover's Hill
-  [-1.7650, 52.0350], // Broadway Tower approach
-  [-1.7685, 52.0240], // Broadway Tower
-  [-1.8575, 52.0335], // Broadway village
-  [-1.8350, 52.0200], // Snowshill Road
-  [-1.8260, 52.0120], // Stanton
-  [-1.8340, 52.0010], // Stanway
-  [-1.8700, 51.9700], // Hailes Abbey
-  [-1.8665, 51.9545], // Winchcombe
-  [-1.8870, 51.9400], // Belas Knap
-  [-1.9670, 51.9380], // Cleeve Common summit
-  [-1.9900, 51.9300], // Cleeve Hill village
-  [-2.0120, 51.9100], // Prestbury
-  [-2.0700, 51.8700], // Leckhampton Hill
-  [-2.0500, 51.8650], // Charlton Kings Common
-  [-2.0350, 51.8500], // Seven Springs
-  [-2.0900, 51.8480], // Crickley Hill
-  [-2.0800, 51.8380], // Barrow Wake
-  [-2.0650, 51.8280], // Birdlip
-  [-2.1440, 51.8340], // Cooper's Hill
-  [-2.1550, 51.8200], // Prinknash
-  [-2.1900, 51.7980], // Painswick Beacon
-  [-2.1955, 51.7880], // Painswick
-  [-2.2100, 51.7680], // Edge
-  [-2.2750, 51.7550], // Haresfield Beacon
-  [-2.2900, 51.7450], // Standish Wood
-  [-2.2800, 51.7350], // King's Stanley
-  [-2.2700, 51.7250], // Selsley Common
-  [-2.3520, 51.7100], // Cam Long Down
-  [-2.3540, 51.6820], // Dursley
-  [-2.3700, 51.6880], // Stinchcombe Hill
-  [-2.3800, 51.6600], // North Nibley / Tyndale Monument
-  [-2.3540, 51.6360], // Wotton-under-Edge
-  [-2.3350, 51.6100], // Alderley
-  [-2.3240, 51.5700], // Hawkesbury Upton
-  [-2.3100, 51.5480], // Horton
-  [-2.3200, 51.5350], // Little Sodbury hill fort
-  [-2.3130, 51.5250], // Old Sodbury
-  [-2.3600, 51.4980], // Tormarton
-  [-2.3650, 51.4430], // Cold Ashton
-  [-2.3700, 51.4100], // Lansdown
-  [-2.3750, 51.3950], // Weston (Bath approach)
-  [-2.3590, 51.3812], // Bath Abbey (finish)
-];
-
 export default function TrailMap({
   properties,
   activeSlug,
@@ -108,17 +60,10 @@ export default function TrailMap({
     map.current.on("load", () => {
       if (!map.current) return;
 
-      // Add trail path
+      // Add trail path from OpenStreetMap GeoJSON (relation 65239)
       map.current.addSource("trail", {
         type: "geojson",
-        data: {
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "LineString",
-            coordinates: TRAIL_PATH,
-          },
-        },
+        data: "/data/cotswold-way.geojson",
       });
 
       // Trail glow (wider, semi-transparent)

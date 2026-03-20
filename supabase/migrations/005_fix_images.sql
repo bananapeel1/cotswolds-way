@@ -1,0 +1,13 @@
+-- Fix property images to show proper English/Cotswold style buildings
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80' WHERE slug = 'the-lygon-arms';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1518780664697-55e3ad937233?w=800&q=80' WHERE slug = 'holly-house-bnb';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1572120360610-d971b9d7767c?w=800&q=80' WHERE slug = 'the-mount-inn';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1605543667606-52b0f1ee1b72?w=800&q=80' WHERE slug = 'westward-house';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=800&q=80' WHERE slug = 'cleeve-hill-hotel';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1590073242678-70ee3fc28e8e?w=800&q=80' WHERE slug = 'the-royal-oak-painswick';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1595521624992-48a59aef95e3?w=800&q=80' WHERE slug = 'cardynham-house';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80' WHERE slug = 'bear-of-rodborough';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1558036117-15d82a90b9b1?w=800&q=80' WHERE slug = 'the-old-fleece';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1510798831971-661eb04b3739?w=800&q=80' WHERE slug = 'old-sodbury-dog-inn';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=800&q=80' WHERE slug = 'the-swan-wotton';
+UPDATE properties SET image_url = 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&q=80' WHERE slug = 'cold-ashton-manor';

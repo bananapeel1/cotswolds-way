@@ -154,21 +154,21 @@ export default async function PropertyPage({
             <img
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
               alt="Cozy bedroom"
-              src="https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=600&q=80"
+              src="https://images.unsplash.com/photo-1616594039964-ae9021a400a0?w=600&q=80"
             />
           </div>
           <div className="relative overflow-hidden rounded-xl group">
             <img
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-              alt="Breakfast room"
-              src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=600&q=80"
+              alt="English breakfast"
+              src="https://images.unsplash.com/photo-1533920379810-6bed1640a959?w=600&q=80"
             />
           </div>
           <div className="md:col-span-2 relative overflow-hidden rounded-xl group">
             <img
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-              alt="Lounge with fireplace"
-              src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&q=80"
+              alt="Cotswold countryside"
+              src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1200&q=80"
             />
             <button className="absolute bottom-6 right-6 bg-white/90 backdrop-blur px-4 py-2 rounded-lg font-bold text-sm text-primary shadow-lg flex items-center gap-2">
               <span className="material-symbols-outlined text-base">
