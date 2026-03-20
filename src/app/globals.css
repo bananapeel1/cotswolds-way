@@ -1,26 +1,102 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Primary: Deep Forest */
+  --color-primary: #173124;
+  --color-primary-container: #2d4739;
+  --color-primary-fixed: #ccead6;
+  --color-primary-fixed-dim: #b0cdbb;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #98b5a3;
+  --color-on-primary-fixed: #062014;
+  --color-on-primary-fixed-variant: #324c3e;
+  --color-inverse-primary: #b0cdbb;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Secondary: Cotswold Stone */
+  --color-secondary: #665d4e;
+  --color-secondary-container: #ebdecb;
+  --color-secondary-fixed: #eee1ce;
+  --color-secondary-fixed-dim: #d1c5b2;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #6b6152;
+  --color-on-secondary-fixed: #211b0f;
+  --color-on-secondary-fixed-variant: #4e4638;
+
+  /* Tertiary: Trail Marker */
+  --color-tertiary: #541600;
+  --color-tertiary-container: #7a2300;
+  --color-tertiary-fixed: #ffdbd0;
+  --color-tertiary-fixed-dim: #ffb59d;
+  --color-on-tertiary: #ffffff;
+  --color-on-tertiary-container: #ff9069;
+  --color-on-tertiary-fixed: #390c00;
+  --color-on-tertiary-fixed-variant: #832600;
+
+  /* Surface system */
+  --color-surface: #fcf9f4;
+  --color-surface-dim: #dcdad5;
+  --color-surface-bright: #fcf9f4;
+  --color-surface-tint: #496455;
+  --color-surface-variant: #e5e2dd;
+  --color-surface-container: #f0ede8;
+  --color-surface-container-low: #f6f3ee;
+  --color-surface-container-high: #ebe8e3;
+  --color-surface-container-highest: #e5e2dd;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-surface: #1c1c19;
+  --color-on-surface-variant: #424844;
+  --color-inverse-surface: #31302d;
+  --color-inverse-on-surface: #f3f0eb;
+
+  /* Background */
+  --color-background: #fcf9f4;
+  --color-on-background: #1c1c19;
+
+  /* Outline */
+  --color-outline: #727973;
+  --color-outline-variant: #c2c8c2;
+
+  /* Error */
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+
+  /* Typography */
+  --font-headline: "Newsreader", serif;
+  --font-body: "Manrope", sans-serif;
+  --font-label: "Manrope", sans-serif;
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+}
+
+/* Material Symbols */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+.material-symbols-outlined.filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
