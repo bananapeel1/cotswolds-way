@@ -1,6 +1,8 @@
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
-import { getProperties } from "@/lib/queries";
+import { getProperties, getPropertiesWithCoordinates } from "@/lib/queries";
+import TrailMap from "@/components/TrailMap";
+import type { MapProperty } from "@/components/TrailMap";
 
 function mapPropertyToCard(p: Record<string, unknown>) {
   const distanceMiles = Number(p.trail_distance_miles) || 0;
@@ -84,15 +86,37 @@ const FALLBACK_ACCOMMODATIONS = [
   },
 ];
 
+// Fallback coordinates from seed data
+const FALLBACK_MAP_PROPERTIES: MapProperty[] = [
+  { slug: "the-lygon-arms", name: "The Lygon Arms", village: "Broadway", price: 245, rating: 4.9, propertyType: "inn", dayOnTrail: 2, longitude: -1.8563, latitude: 52.0356 },
+  { slug: "holly-house-bnb", name: "Holly House B&B", village: "Chipping Campden", price: 115, rating: 4.7, propertyType: "bnb", dayOnTrail: 1, longitude: -1.7798, latitude: 52.0536 },
+  { slug: "westward-house", name: "Westward House", village: "Winchcombe", price: 145, rating: 4.8, propertyType: "bnb", dayOnTrail: 3, longitude: -1.966, latitude: 51.9539 },
+];
+
 export default async function SearchPage() {
   let accommodations;
+  let mapProperties: MapProperty[];
   try {
     const properties = await getProperties();
     accommodations = properties.map(mapPropertyToCard);
+    const coords = await getPropertiesWithCoordinates();
+    mapProperties = (coords || []).map((p: Record<string, unknown>) => ({
+      slug: p.slug as string,
+      name: p.name as string,
+      village: p.village as string,
+      price: Math.round(Number(p.price_per_night) / 100),
+      rating: Number(p.rating) || 0,
+      propertyType: p.property_type as string,
+      dayOnTrail: Number(p.day_on_trail) || 0,
+      longitude: Number(p.longitude) || 0,
+      latitude: Number(p.latitude) || 0,
+    }));
   } catch {
     accommodations = FALLBACK_ACCOMMODATIONS;
+    mapProperties = FALLBACK_MAP_PROPERTIES;
   }
   if (accommodations.length === 0) accommodations = FALLBACK_ACCOMMODATIONS;
+  if (mapProperties.length === 0) mapProperties = FALLBACK_MAP_PROPERTIES;
   return (
     <>
       <Navbar />
@@ -220,102 +244,8 @@ export default async function SearchPage() {
         </section>
 
         {/* Right: Interactive Map */}
-        <section className="hidden md:block w-1/2 relative bg-surface-container-low">
-          <div className="absolute inset-0 z-0">
-            <img
-              className="w-full h-full object-cover opacity-60 mix-blend-multiply grayscale contrast-125"
-              alt="Topographical map of the Cotswold countryside"
-              src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=1200&q=80"
-            />
-            {/* Trail Path SVG */}
-            <svg
-              className="absolute inset-0 w-full h-full"
-              fill="none"
-              viewBox="0 0 800 1000"
-            >
-              <path
-                className="drop-shadow-md"
-                d="M100,900 C150,850 200,800 220,700 S300,550 400,500 S500,350 550,250 S700,150 750,50"
-                fill="none"
-                stroke="#541600"
-                strokeDasharray="12 6"
-                strokeLinecap="round"
-                strokeWidth="5"
-              />
-            </svg>
-
-            {/* Map Markers */}
-            <div className="absolute top-[45%] left-[45%] group cursor-pointer z-10">
-              <div className="bg-primary text-white p-2.5 rounded-full shadow-lg border-2 border-white flex items-center justify-center hover:scale-110 transition-transform">
-                <span className="material-symbols-outlined text-sm filled">
-                  bed
-                </span>
-              </div>
-              <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-3 bg-surface-container-lowest p-3 rounded-xl shadow-2xl w-40 border border-outline-variant/20">
-                <p className="text-[10px] font-bold uppercase tracking-tighter text-secondary mb-1">
-                  The Lygon Arms
-                </p>
-                <p className="text-[10px] text-primary font-bold">
-                  &pound;245 &middot; 4.9 &#9733;
-                </p>
-              </div>
-            </div>
-            <div className="absolute top-[65%] left-[30%] group cursor-pointer z-10">
-              <div className="bg-tertiary text-white p-2.5 rounded-full shadow-lg border-2 border-white flex items-center justify-center hover:scale-110 transition-transform">
-                <span className="material-symbols-outlined text-sm filled">
-                  bed
-                </span>
-              </div>
-            </div>
-            <div className="absolute top-[25%] left-[60%] group cursor-pointer z-10">
-              <div className="bg-secondary text-white p-2 rounded-full shadow-lg border-2 border-white flex items-center justify-center hover:scale-110 transition-transform">
-                <span className="material-symbols-outlined text-sm filled">
-                  home
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Map Controls */}
-          <div className="absolute top-6 left-6 flex flex-col gap-2 z-20">
-            <button className="bg-surface/90 backdrop-blur-md p-3 rounded-xl shadow-lg hover:bg-white transition-colors border border-outline-variant/10">
-              <span className="material-symbols-outlined">add</span>
-            </button>
-            <button className="bg-surface/90 backdrop-blur-md p-3 rounded-xl shadow-lg hover:bg-white transition-colors border border-outline-variant/10">
-              <span className="material-symbols-outlined">remove</span>
-            </button>
-            <button className="bg-surface/90 backdrop-blur-md p-3 rounded-xl shadow-lg hover:bg-white transition-colors border border-outline-variant/10">
-              <span className="material-symbols-outlined">my_location</span>
-            </button>
-          </div>
-
-          {/* Trail Info */}
-          <div className="absolute bottom-6 left-6 right-6 z-20">
-            <div className="bg-primary/95 text-white p-6 rounded-2xl backdrop-blur-xl shadow-2xl flex justify-between items-center border border-white/10">
-              <div>
-                <span className="font-label text-[10px] uppercase tracking-[0.2em] text-on-primary-container">
-                  Current Active Segment
-                </span>
-                <h3 className="font-headline text-2xl italic">
-                  Chipping Campden to Stanton
-                </h3>
-              </div>
-              <div className="flex gap-8 text-right">
-                <div>
-                  <p className="font-label text-[10px] uppercase tracking-widest text-on-primary-container">
-                    Total Ascent
-                  </p>
-                  <p className="font-bold">1,240 ft</p>
-                </div>
-                <div>
-                  <p className="font-label text-[10px] uppercase tracking-widest text-on-primary-container">
-                    Distance
-                  </p>
-                  <p className="font-bold">10.2 mi</p>
-                </div>
-              </div>
-            </div>
-          </div>
+        <section className="hidden md:block w-1/2 relative">
+          <TrailMap properties={mapProperties} />
         </section>
       </main>
     </>

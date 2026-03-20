@@ -58,6 +58,12 @@ export async function getTrailSegments() {
   return data;
 }
 
+export async function getPropertiesWithCoordinates() {
+  const { data, error } = await supabase.rpc("get_properties_with_coordinates");
+  if (error) throw error;
+  return data;
+}
+
 export async function getItineraryTemplates() {
   const { data, error } = await supabase
     .from("itinerary_templates")

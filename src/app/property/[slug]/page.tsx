@@ -394,11 +394,23 @@ export default async function PropertyPage({
                     <span className="font-bold text-primary">&pound;{price}</span>
                   </div>
                 </div>
-                <button className="w-full bg-tertiary text-on-tertiary py-4 rounded-xl font-bold text-lg hover:bg-tertiary-container shadow-lg shadow-tertiary/20 active:scale-[0.98] transition-all mb-4">
-                  Reserve Room
-                </button>
+                {property.website_url ? (
+                  <a
+                    href={property.website_url as string}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full bg-tertiary text-on-tertiary py-4 rounded-xl font-bold text-lg hover:bg-tertiary-container shadow-lg shadow-tertiary/20 active:scale-[0.98] transition-all mb-4 text-center"
+                  >
+                    Book Direct
+                    <span className="material-symbols-outlined text-base ml-2 align-middle">open_in_new</span>
+                  </a>
+                ) : (
+                  <button className="w-full bg-tertiary text-on-tertiary py-4 rounded-xl font-bold text-lg hover:bg-tertiary-container shadow-lg shadow-tertiary/20 active:scale-[0.98] transition-all mb-4">
+                    Reserve Room
+                  </button>
+                )}
                 <p className="text-center text-xs text-secondary">
-                  You won&apos;t be charged yet
+                  {property.website_url ? "You\u2019ll be redirected to the property\u2019s own site" : "You won\u2019t be charged yet"}
                 </p>
                 <div className="mt-8 pt-8 border-t border-outline-variant/30">
                   <h4 className="font-bold text-primary mb-4 text-sm">
