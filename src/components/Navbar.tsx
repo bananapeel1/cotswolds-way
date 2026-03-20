@@ -6,8 +6,9 @@ export default function Navbar() {
       <div className="flex justify-between items-center px-8 py-4 max-w-screen-2xl mx-auto w-full">
         <Link
           href="/"
-          className="text-primary font-headline italic font-bold text-2xl tracking-tighter"
+          className="flex items-center gap-3 text-primary font-headline italic font-bold text-2xl tracking-tighter"
         >
+          <img src="/logo.svg" alt="Logo" className="w-9 h-9" />
           The Cotswold Way
         </Link>
         <div className="hidden md:flex items-center gap-8">
@@ -24,13 +25,13 @@ export default function Navbar() {
             Itineraries
           </Link>
           <Link
-            href="#"
+            href="/luggage-transfers"
             className="text-secondary hover:text-primary transition-colors font-label text-xs font-bold uppercase tracking-widest"
           >
             Luggage Transfers
           </Link>
           <Link
-            href="#"
+            href="/plan"
             className="text-secondary hover:text-primary transition-colors font-label text-xs font-bold uppercase tracking-widest"
           >
             Plan My Hike

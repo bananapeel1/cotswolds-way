@@ -124,6 +124,7 @@ export default function TrailMap({
       // Create custom marker element
       const el = document.createElement("div");
       el.className = "trail-map-marker";
+      el.style.cursor = "pointer";
       el.innerHTML = `
         <div style="
           background: ${isActive ? "#541600" : "#173124"};
@@ -142,25 +143,11 @@ export default function TrailMap({
         ">£${price}</div>
       `;
 
-      el.addEventListener("mouseenter", () => {
-        el.style.transform = "scale(1.15)";
-        el.style.zIndex = "10";
-      });
-      el.addEventListener("mouseleave", () => {
-        if (!isActive) {
-          el.style.transform = "scale(1)";
-          el.style.zIndex = "1";
-        }
-      });
-
-      if (onMarkerClick) {
-        el.addEventListener("click", () => onMarkerClick(p.slug));
-      }
-
-      // Create popup
+      // Create popup for hover (not click)
       const popup = new mapboxgl.Popup({
         offset: 25,
         closeButton: false,
+        closeOnClick: false,
         className: "trail-map-popup",
       }).setHTML(`
         <div style="font-family: 'Manrope', sans-serif; padding: 4px;">
@@ -178,9 +165,33 @@ export default function TrailMap({
         </div>
       `);
 
+      // Show popup on hover, hide on leave
+      const innerDiv = el.querySelector("div") as HTMLDivElement;
+      el.addEventListener("mouseenter", () => {
+        if (innerDiv) innerDiv.style.transform = "scale(1.15)";
+        el.style.zIndex = "10";
+        popup.setLngLat([p.longitude, p.latitude]).addTo(map.current!);
+      });
+      el.addEventListener("mouseleave", () => {
+        if (!isActive && innerDiv) {
+          innerDiv.style.transform = "scale(1)";
+        }
+        el.style.zIndex = "1";
+        popup.remove();
+      });
+
+      // Click navigates to property page (or calls onMarkerClick)
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (onMarkerClick) {
+          onMarkerClick(p.slug);
+        } else {
+          window.location.href = `/property/${p.slug}`;
+        }
+      });
+
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([p.longitude, p.latitude])
-        .setPopup(popup)
         .addTo(map.current!);
 
       markersRef.current.push(marker);
