@@ -1,8 +1,31 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+import HomeMapPreview from "@/components/HomeMapPreview";
+import { getPropertiesWithCoordinates } from "@/lib/queries";
 
-export default function Home() {
+const FALLBACK_MAP_PROPERTIES = [
+  { slug: "the-lygon-arms", name: "The Lygon Arms", village: "Broadway", price: 245, longitude: -1.8563, latitude: 52.0356 },
+  { slug: "holly-house-bnb", name: "Holly House B&B", village: "Chipping Campden", price: 115, longitude: -1.7798, latitude: 52.0536 },
+  { slug: "the-white-hart-winchcombe", name: "The White Hart Inn", village: "Winchcombe", price: 120, longitude: -1.966, latitude: 51.9539 },
+];
+
+export default async function Home() {
+  let mapProperties;
+  try {
+    const coords = await getPropertiesWithCoordinates();
+    mapProperties = (coords || []).map((p: Record<string, unknown>) => ({
+      slug: p.slug as string,
+      name: p.name as string,
+      village: p.village as string,
+      price: Math.round(Number(p.price_per_night) / 100),
+      longitude: Number(p.longitude) || 0,
+      latitude: Number(p.latitude) || 0,
+    }));
+  } catch {
+    mapProperties = FALLBACK_MAP_PROPERTIES;
+  }
+  if (mapProperties.length === 0) mapProperties = FALLBACK_MAP_PROPERTIES;
   return (
     <>
       <Navbar />
@@ -155,7 +178,7 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[600px]">
             {/* Main Card */}
-            <div className="md:col-span-8 group relative rounded-2xl overflow-hidden cursor-pointer shadow-lg min-h-[400px]">
+            <Link href="/itinerary" className="md:col-span-8 group relative rounded-2xl overflow-hidden cursor-pointer shadow-lg min-h-[400px]">
               <img
                 alt="Misty Cotswold valley"
                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
@@ -188,10 +211,10 @@ export default function Home() {
                   </span>
                 </div>
               </div>
-            </div>
+            </Link>
             {/* Side Cards */}
             <div className="md:col-span-4 grid grid-rows-2 gap-6">
-              <div className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md bg-white p-8 border border-outline-variant/10">
+              <Link href="/itinerary" className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md bg-white p-8 border border-outline-variant/10">
                 <div className="relative z-10">
                   <h3 className="font-headline text-2xl font-bold text-primary mb-2">
                     The Weekend Explorer
@@ -212,8 +235,8 @@ export default function Home() {
                     weekend
                   </span>
                 </div>
-              </div>
-              <div className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md min-h-[200px]">
+              </Link>
+              <Link href="/itinerary" className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md min-h-[200px]">
                 <img
                   alt="Forest path in the Cotswolds"
                   className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
@@ -228,7 +251,7 @@ export default function Home() {
                     Extended Leisure Pace
                   </p>
                 </div>
-              </div>
+              </Link>
             </div>
           </div>
         </div>
@@ -239,64 +262,8 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div className="order-2 lg:order-1">
-              <div className="relative w-full aspect-square bg-surface-container-high rounded-[2rem] overflow-hidden shadow-xl border-4 border-white">
-                {/* Mock Map */}
-                <div className="absolute inset-0 opacity-40 grayscale contrast-125">
-                  <img
-                    alt="Topographic map"
-                    className="w-full h-full object-cover"
-                    src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=800&q=80"
-                  />
-                </div>
-                {/* Trail path */}
-                <svg
-                  className="absolute inset-0 w-full h-full drop-shadow-md"
-                  viewBox="0 0 400 400"
-                >
-                  <path
-                    d="M50,100 C150,80 200,250 350,300"
-                    fill="none"
-                    stroke="#541600"
-                    strokeDasharray="8 4"
-                    strokeWidth="4"
-                  />
-                </svg>
-                {/* Markers */}
-                <div className="absolute top-[80px] left-[45px] group">
-                  <div className="w-4 h-4 bg-tertiary rounded-full animate-pulse" />
-                  <div className="absolute left-6 top-0 bg-white p-3 rounded-lg shadow-lg w-40 -translate-y-1/2 scale-0 group-hover:scale-100 transition-transform origin-left">
-                    <p className="text-[10px] font-bold text-primary uppercase">
-                      Broadway Hotel
-                    </p>
-                    <p className="text-[9px] text-tertiary font-bold tracking-tight">
-                      0.2 MILES FROM TRAIL
-                    </p>
-                  </div>
-                </div>
-                <div className="absolute top-[240px] left-[190px] group">
-                  <div className="w-4 h-4 bg-tertiary rounded-full" />
-                  <div className="absolute left-6 top-0 bg-white p-3 rounded-lg shadow-lg w-40 -translate-y-1/2 scale-100 transition-transform origin-left">
-                    <p className="text-[10px] font-bold text-primary uppercase">
-                      Painswick Lodge
-                    </p>
-                    <p className="text-[9px] text-tertiary font-bold tracking-tight">
-                      0.1 MILES FROM TRAIL
-                    </p>
-                  </div>
-                </div>
-                <div className="absolute bottom-4 left-4 right-4 bg-white/80 backdrop-blur-md p-4 rounded-xl flex items-center justify-between border border-white/40">
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-primary">
-                      explore
-                    </span>
-                    <span className="font-headline font-bold text-primary">
-                      Live Elevation Profile
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                    Switch to SAT
-                  </span>
-                </div>
+              <div className="relative w-full aspect-square">
+                <HomeMapPreview properties={mapProperties} />
               </div>
             </div>
             <div className="order-1 lg:order-2">
