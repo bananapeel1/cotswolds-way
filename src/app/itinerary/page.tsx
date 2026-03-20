@@ -1,72 +1,107 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { getItineraryTemplates, getTrailSegments } from "@/lib/queries";
 
-const TEMPLATES = [
+const FALLBACK_TEMPLATES = [
   {
-    title: "North to South",
-    days: "7 Days",
-    miles: "102 Miles",
-    description:
-      "The classic path from Chipping Campden to Bath. A steady pace for the dedicated walker.",
-    image:
-      "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80",
+    id: "1",
+    name: "7-Day Classic",
+    slug: "north-to-south-7",
+    description: "The definitive Cotswold Way experience from Chipping Campden to Bath. A steady pace for the dedicated walker.",
+    total_days: 7,
+    total_miles: 102.0,
+    direction: "north_to_south",
+    image_url: null,
+    itinerary_stops: [
+      { day_number: 1, village: "Chipping Campden", label: "Start of Trail", mile_marker: 0.0 },
+      { day_number: 1, village: "Broadway", label: "End of Day 1", mile_marker: 6.2 },
+      { day_number: 2, village: "Winchcombe", label: "End of Day 2", mile_marker: 17.6 },
+    ],
   },
   {
-    title: "South to North",
-    days: "8 Days",
-    miles: "102 Miles",
-    description:
-      "A more relaxed ascent from the Roman city of Bath. Ideal for those who enjoy long lunches.",
-    image:
-      "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80",
+    id: "2",
+    name: "8-Day Scenic",
+    slug: "north-to-south-8",
+    description: "A more relaxed pace with shorter days, allowing time to explore villages and detours along the way.",
+    total_days: 8,
+    total_miles: 102.0,
+    direction: "north_to_south",
+    image_url: null,
+    itinerary_stops: [],
   },
   {
-    title: "Cotswold Circulars",
-    days: "Custom",
-    miles: "Varies",
-    description:
-      "Loop-based itineraries starting and ending at central trail hubs. Best for weekenders.",
-    image:
-      "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800&q=80",
+    id: "3",
+    name: "Weekend Explorer",
+    slug: "broadway-circular",
+    description: "A focused 3-day loop around the charming hills of Broadway and Stanton. Perfect for a weekend escape.",
+    total_days: 3,
+    total_miles: 24.0,
+    direction: "circular",
+    image_url: null,
+    itinerary_stops: [],
   },
 ];
 
-const STOPS = [
-  {
-    name: "Chipping Campden",
-    label: "Start of Trail",
-    mile: "0.0",
-    markerStyle: "bg-primary",
-    markerIcon: "tour",
-    borderStyle: "border-l-4 border-primary",
-    hasAccommodation: true,
-  },
-  {
-    name: "Broadway",
-    label: "Staging Point",
-    mile: "6.2",
-    markerStyle: "bg-surface-container-highest",
-    markerIcon: "radio_button_checked",
-    borderStyle: "",
-    hasAccommodation: false,
-  },
-  {
-    name: "Winchcombe",
-    label: "Historic Hub",
-    mile: "17.6",
-    markerStyle: "bg-surface-container-highest",
-    markerIcon: "radio_button_checked",
-    borderStyle: "",
-    hasAccommodation: false,
-  },
+const FALLBACK_SEGMENTS = [
+  { name: "Chipping Campden to Broadway", start_village: "Chipping Campden", end_village: "Broadway", distance_miles: 6.2, elevation_gain_ft: 850, difficulty: "moderate", day_number: 1 },
+  { name: "Broadway to Winchcombe", start_village: "Broadway", end_village: "Winchcombe", distance_miles: 11.4, elevation_gain_ft: 1240, difficulty: "strenuous", day_number: 2 },
 ];
 
-const CONNECTIONS = [
-  { distance: "6.2 MILES", terrain: "Moderate Ascent" },
-  { distance: "11.4 MILES", terrain: "Steep Escarpment" },
+const TEMPLATE_IMAGES = [
+  "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800&q=80",
+  "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&q=80",
+  "https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=800&q=80",
 ];
 
-export default function ItineraryPage() {
+function formatDirection(dir: string) {
+  if (dir === "north_to_south") return "North to South";
+  if (dir === "south_to_north") return "South to North";
+  if (dir === "circular") return "Circular";
+  return dir;
+}
+
+export default async function ItineraryPage() {
+  let templates;
+  let segments;
+  try {
+    templates = await getItineraryTemplates();
+    segments = await getTrailSegments();
+  } catch {
+    templates = FALLBACK_TEMPLATES;
+    segments = FALLBACK_SEGMENTS;
+  }
+  if (!templates || templates.length === 0) templates = FALLBACK_TEMPLATES;
+  if (!segments || segments.length === 0) segments = FALLBACK_SEGMENTS;
+
+  // Use the first template's stops for the timeline
+  const activeTemplate = templates[0];
+  const stops = (activeTemplate.itinerary_stops || []).sort(
+    (a: Record<string, unknown>, b: Record<string, unknown>) =>
+      Number(a.mile_marker) - Number(b.mile_marker)
+  );
+
+  // Build connections between consecutive stops from trail segments
+  const connections: { distance: string; terrain: string }[] = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const seg = segments.find(
+      (s: Record<string, unknown>) =>
+        s.start_village === stops[i].village || s.end_village === stops[i + 1].village
+    );
+    if (seg) {
+      connections.push({
+        distance: `${seg.distance_miles} MILES`,
+        terrain: seg.difficulty === "strenuous" ? "Steep Escarpment" : seg.difficulty === "easy" ? "Gentle Walk" : "Moderate Ascent",
+      });
+    } else {
+      const dist = (Number(stops[i + 1].mile_marker) - Number(stops[i].mile_marker)).toFixed(1);
+      connections.push({ distance: `${dist} MILES`, terrain: "Walking" });
+    }
+  }
+
+  const totalMiles = Number(activeTemplate.total_miles) || 102;
+  const lastMile = stops.length > 0 ? Number(stops[stops.length - 1].mile_marker) : 0;
+  const remaining = (totalMiles - lastMile).toFixed(1);
+
   return (
     <>
       <Navbar />
@@ -86,33 +121,33 @@ export default function ItineraryPage() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {TEMPLATES.map((tpl) => (
+            {templates.map((tpl: Record<string, unknown>, idx: number) => (
               <div
-                key={tpl.title}
+                key={tpl.id as string}
                 className="group relative bg-surface-container-lowest rounded-xl overflow-hidden hover:shadow-xl transition-all duration-500 flex flex-col cursor-pointer"
               >
                 <div className="h-64 overflow-hidden">
                   <img
-                    alt={tpl.title}
+                    alt={tpl.name as string}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                    src={tpl.image}
+                    src={(tpl.image_url as string) || TEMPLATE_IMAGES[idx % TEMPLATE_IMAGES.length]}
                   />
                 </div>
                 <div className="p-8 flex-grow">
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="font-headline text-2xl font-bold text-primary">
-                      {tpl.title}
+                      {tpl.name as string}
                     </h3>
                     <span className="bg-primary-fixed text-on-primary-fixed text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider">
-                      {tpl.days}
+                      {tpl.total_days as number} Days
                     </span>
                   </div>
                   <p className="text-secondary text-sm leading-relaxed mb-6">
-                    {tpl.description}
+                    {tpl.description as string}
                   </p>
                   <div className="flex items-center justify-between mt-auto">
                     <span className="font-label text-xs font-bold text-secondary uppercase tracking-widest">
-                      {tpl.miles}
+                      {tpl.total_miles as number} Miles · {formatDirection(tpl.direction as string)}
                     </span>
                     <button className="text-tertiary font-bold text-sm flex items-center gap-2 group/btn hover:gap-3 transition-all">
                       Select Template{" "}
@@ -145,7 +180,7 @@ export default function ItineraryPage() {
                     Distance Left
                   </span>
                   <span className="font-headline text-2xl font-bold text-tertiary">
-                    102.0{" "}
+                    {remaining}{" "}
                     <span className="text-sm font-normal">MI</span>
                   </span>
                 </div>
@@ -155,7 +190,8 @@ export default function ItineraryPage() {
                     Total Days
                   </span>
                   <span className="font-headline text-2xl font-bold text-primary">
-                    0 <span className="text-sm font-normal">DAYS</span>
+                    {activeTemplate.total_days}{" "}
+                    <span className="text-sm font-normal">DAYS</span>
                   </span>
                 </div>
               </div>
@@ -171,113 +207,122 @@ export default function ItineraryPage() {
                 }}
               />
 
-              {STOPS.map((stop, i) => (
-                <div key={stop.name}>
-                  {/* Stop */}
-                  <div className="relative mb-16">
-                    <div
-                      className={`absolute -left-10 top-0 w-8 h-8 rounded-full ${stop.markerStyle} border-4 border-surface flex items-center justify-center`}
-                    >
-                      <span
-                        className={`material-symbols-outlined text-xs filled ${stop.markerStyle === "bg-primary" ? "text-on-primary" : "text-secondary"}`}
-                      >
-                        {stop.markerIcon}
-                      </span>
-                    </div>
-                    <div
-                      className={`bg-surface-container-low p-8 rounded-xl shadow-sm ${stop.borderStyle}`}
-                    >
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <span className="font-label text-xs font-bold text-tertiary uppercase tracking-widest block mb-1">
-                            {stop.label}
-                          </span>
-                          <h4 className="font-headline text-2xl font-bold text-primary">
-                            {stop.name}
-                          </h4>
-                        </div>
-                        <span className="text-secondary font-label text-xs font-bold">
-                          MILE {stop.mile}
-                        </span>
-                      </div>
-                      {stop.hasAccommodation ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                          <div className="bg-surface-container-lowest p-4 rounded-lg flex items-center gap-4 cursor-pointer hover:bg-secondary-container transition-colors group">
-                            <div className="bg-surface-container-low w-12 h-12 rounded-full flex items-center justify-center group-hover:bg-white transition-colors">
-                              <span className="material-symbols-outlined text-secondary">
-                                bed
-                              </span>
-                            </div>
-                            <div>
-                              <span className="block font-bold text-sm text-primary">
-                                Add Accommodation
-                              </span>
-                              <span className="text-xs text-secondary italic">
-                                Required for Night 1
-                              </span>
-                            </div>
-                          </div>
-                          <div className="bg-surface-container-lowest p-4 rounded-lg flex items-center gap-4 border border-dashed border-outline-variant opacity-50">
-                            <div className="bg-surface-container-low w-12 h-12 rounded-full flex items-center justify-center">
-                              <span className="material-symbols-outlined text-secondary">
-                                restaurant
-                              </span>
-                            </div>
-                            <div>
-                              <span className="block font-bold text-sm text-primary">
-                                Add Dinner Plan
-                              </span>
-                              <span className="text-xs text-secondary italic">
-                                Optional
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-4">
-                          <div className="relative">
-                            <input
-                              className="w-full bg-surface-container-lowest border-none rounded-lg py-4 pl-12 pr-4 focus:ring-2 focus:ring-tertiary/20 text-sm font-body"
-                              placeholder={`Search for stays in ${stop.name}...`}
-                              type="text"
-                            />
-                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-secondary">
-                              search
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+              {stops.map((stop: Record<string, unknown>, i: number) => {
+                const isStart = i === 0;
+                const markerStyle = isStart ? "bg-primary" : "bg-surface-container-highest";
+                const markerIcon = isStart ? "tour" : "radio_button_checked";
+                const borderStyle = isStart ? "border-l-4 border-primary" : "";
 
-                  {/* Connection */}
-                  {i < CONNECTIONS.length && (
-                    <div className="relative py-4 mb-8 flex items-center justify-center">
-                      <div className="bg-surface-container-highest px-4 py-2 rounded-full flex items-center gap-4">
-                        <span className="material-symbols-outlined text-secondary text-sm">
-                          terrain
-                        </span>
-                        <span className="font-label text-[10px] font-bold text-secondary uppercase tracking-widest">
-                          {CONNECTIONS[i].distance} &bull;{" "}
-                          {CONNECTIONS[i].terrain}
+                return (
+                  <div key={`${stop.village}-${stop.mile_marker}`}>
+                    {/* Stop */}
+                    <div className="relative mb-16">
+                      <div
+                        className={`absolute -left-10 top-0 w-8 h-8 rounded-full ${markerStyle} border-4 border-surface flex items-center justify-center`}
+                      >
+                        <span
+                          className={`material-symbols-outlined text-xs filled ${isStart ? "text-on-primary" : "text-secondary"}`}
+                        >
+                          {markerIcon}
                         </span>
                       </div>
+                      <div
+                        className={`bg-surface-container-low p-8 rounded-xl shadow-sm ${borderStyle}`}
+                      >
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <span className="font-label text-xs font-bold text-tertiary uppercase tracking-widest block mb-1">
+                              {stop.label as string}
+                            </span>
+                            <h4 className="font-headline text-2xl font-bold text-primary">
+                              {stop.village as string}
+                            </h4>
+                          </div>
+                          <span className="text-secondary font-label text-xs font-bold">
+                            MILE {Number(stop.mile_marker).toFixed(1)}
+                          </span>
+                        </div>
+                        {isStart ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                            <div className="bg-surface-container-lowest p-4 rounded-lg flex items-center gap-4 cursor-pointer hover:bg-secondary-container transition-colors group">
+                              <div className="bg-surface-container-low w-12 h-12 rounded-full flex items-center justify-center group-hover:bg-white transition-colors">
+                                <span className="material-symbols-outlined text-secondary">
+                                  bed
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block font-bold text-sm text-primary">
+                                  Add Accommodation
+                                </span>
+                                <span className="text-xs text-secondary italic">
+                                  Required for Night {stop.day_number as number}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="bg-surface-container-lowest p-4 rounded-lg flex items-center gap-4 border border-dashed border-outline-variant opacity-50">
+                              <div className="bg-surface-container-low w-12 h-12 rounded-full flex items-center justify-center">
+                                <span className="material-symbols-outlined text-secondary">
+                                  restaurant
+                                </span>
+                              </div>
+                              <div>
+                                <span className="block font-bold text-sm text-primary">
+                                  Add Dinner Plan
+                                </span>
+                                <span className="text-xs text-secondary italic">
+                                  Optional
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-4">
+                            <div className="relative">
+                              <input
+                                className="w-full bg-surface-container-lowest border-none rounded-lg py-4 pl-12 pr-4 focus:ring-2 focus:ring-tertiary/20 text-sm font-body"
+                                placeholder={`Search for stays in ${stop.village}...`}
+                                type="text"
+                              />
+                              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-secondary">
+                                search
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* Connection */}
+                    {i < connections.length && (
+                      <div className="relative py-4 mb-8 flex items-center justify-center">
+                        <div className="bg-surface-container-highest px-4 py-2 rounded-full flex items-center gap-4">
+                          <span className="material-symbols-outlined text-secondary text-sm">
+                            terrain
+                          </span>
+                          <span className="font-label text-[10px] font-bold text-secondary uppercase tracking-widest">
+                            {connections[i].distance} &bull;{" "}
+                            {connections[i].terrain}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Remaining Trail */}
-              <div className="relative py-12 flex flex-col items-center">
-                <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center mb-4">
-                  <span className="material-symbols-outlined text-secondary">
-                    more_vert
-                  </span>
+              {Number(remaining) > 0 && (
+                <div className="relative py-12 flex flex-col items-center">
+                  <div className="w-12 h-12 rounded-full bg-surface-container-high flex items-center justify-center mb-4">
+                    <span className="material-symbols-outlined text-secondary">
+                      more_vert
+                    </span>
+                  </div>
+                  <p className="font-headline text-xl text-secondary italic">
+                    {remaining} miles remaining to the city of Bath
+                  </p>
                 </div>
-                <p className="font-headline text-xl text-secondary italic">
-                  84.4 miles remaining to the city of Bath
-                </p>
-              </div>
+              )}
             </div>
           </div>
 
@@ -301,7 +346,7 @@ export default function ItineraryPage() {
                     Nights Booked
                   </span>
                   <span className="font-headline text-xl font-bold">
-                    0 / 7
+                    0 / {activeTemplate.total_days}
                   </span>
                 </div>
                 <div className="pt-6 border-t border-white/10">
@@ -369,7 +414,7 @@ export default function ItineraryPage() {
                       Weather Window
                     </span>
                     <span className="text-[10px] text-secondary">
-                      Light rain predicted &bull; May 14
+                      Check forecast before booking
                     </span>
                   </div>
                 </div>
@@ -381,10 +426,10 @@ export default function ItineraryPage() {
                   </div>
                   <div>
                     <span className="block text-xs font-bold text-primary">
-                      Safety Alert
+                      Trail Alerts
                     </span>
                     <span className="text-[10px] text-secondary">
-                      Diversion at Cleeve Hill
+                      No active diversions
                     </span>
                   </div>
                 </div>
