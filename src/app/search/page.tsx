@@ -1,7 +1,33 @@
 import Navbar from "@/components/Navbar";
 import Link from "next/link";
+import { getProperties } from "@/lib/queries";
 
-const ACCOMMODATIONS = [
+function mapPropertyToCard(p: Record<string, unknown>) {
+  const distanceMiles = Number(p.trail_distance_miles) || 0;
+  const hasTransfer = p.has_taxi_service && distanceMiles > 0.3;
+  return {
+    slug: p.slug as string,
+    name: p.name as string,
+    rating: Number(p.rating) || 0,
+    distance: hasTransfer
+      ? `${distanceMiles} miles with taxi transfer`
+      : `${distanceMiles} miles off trail`,
+    distanceIcon: hasTransfer ? "local_taxi" : "navigation",
+    price: Math.round(Number(p.price_per_night) / 100),
+    badge: null as string | null,
+    badgeColor: "",
+    urgency: `${p.village} · Day ${p.day_on_trail || "?"}`,
+    urgencyColor: "text-secondary",
+    amenities: [
+      { icon: "dry_cleaning", label: "Boot dryer", active: !!p.has_boot_dryer },
+      { icon: "local_shipping", label: "Luggage partner", active: !!p.has_luggage_transfer },
+      { icon: "pets", label: "Dog friendly", active: !!p.is_dog_friendly },
+    ],
+    image: (p.image_url as string) || "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
+  };
+}
+
+const FALLBACK_ACCOMMODATIONS = [
   {
     slug: "the-lygon-arms",
     name: "The Lygon Arms",
@@ -9,7 +35,7 @@ const ACCOMMODATIONS = [
     distance: "0.1 miles off trail",
     distanceIcon: "navigation",
     price: 245,
-    badge: "AVAILABLE",
+    badge: "AVAILABLE" as string | null,
     badgeColor: "bg-primary",
     urgency: "Only 2 rooms left for May 2026",
     urgencyColor: "text-error",
@@ -18,50 +44,55 @@ const ACCOMMODATIONS = [
       { icon: "local_shipping", label: "Luggage partner", active: true },
       { icon: "pets", label: "Dog friendly", active: true },
     ],
-    image:
-      "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
+    image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
   },
   {
-    slug: "the-hikers-rest",
-    name: "The Hikers Rest B&B",
+    slug: "holly-house-bnb",
+    name: "Holly House B&B",
     rating: 4.7,
-    distance: "0.5 miles with taxi transfer",
-    distanceIcon: "local_taxi",
+    distance: "0.1 miles off trail",
+    distanceIcon: "navigation",
     price: 115,
-    badge: "FILLING FAST",
+    badge: "FILLING FAST" as string | null,
     badgeColor: "bg-tertiary",
-    urgency: "Preferred luggage drop",
+    urgency: "Chipping Campden · Day 1",
     urgencyColor: "text-tertiary",
     amenities: [
-      { icon: "dry_cleaning", label: "Boot dryer", active: false },
+      { icon: "dry_cleaning", label: "Boot dryer", active: true },
       { icon: "local_shipping", label: "Luggage partner", active: true },
-      { icon: "eco", label: "Eco certified", active: true },
+      { icon: "pets", label: "Dog friendly", active: true },
     ],
-    image:
-      "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400&q=80",
+    image: "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400&q=80",
   },
   {
-    slug: "old-post-office-cottage",
-    name: "Old Post Office Cottage",
-    rating: 4.5,
+    slug: "westward-house",
+    name: "Westward House",
+    rating: 4.8,
     distance: "0.3 miles off trail",
     distanceIcon: "navigation",
-    price: 140,
+    price: 145,
     badge: null,
     badgeColor: "",
-    urgency: "Available June onwards",
+    urgency: "Winchcombe · Day 3",
     urgencyColor: "text-secondary",
     amenities: [
       { icon: "dry_cleaning", label: "Boot dryer", active: true },
-      { icon: "local_shipping", label: "Luggage partner", active: false },
-      { icon: "pets", label: "Dog friendly", active: true },
+      { icon: "local_shipping", label: "Luggage partner", active: true },
+      { icon: "pets", label: "Dog friendly", active: false },
     ],
-    image:
-      "https://images.unsplash.com/photo-1510798831971-661eb04b3739?w=400&q=80",
+    image: "https://images.unsplash.com/photo-1510798831971-661eb04b3739?w=400&q=80",
   },
 ];
 
-export default function SearchPage() {
+export default async function SearchPage() {
+  let accommodations;
+  try {
+    const properties = await getProperties();
+    accommodations = properties.map(mapPropertyToCard);
+  } catch {
+    accommodations = FALLBACK_ACCOMMODATIONS;
+  }
+  if (accommodations.length === 0) accommodations = FALLBACK_ACCOMMODATIONS;
   return (
     <>
       <Navbar />
@@ -75,7 +106,7 @@ export default function SearchPage() {
                 Accommodations
               </h2>
               <span className="text-sm font-label text-secondary">
-                24 properties found
+                {accommodations.length} properties found
               </span>
             </div>
             <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
@@ -105,7 +136,7 @@ export default function SearchPage() {
 
           {/* Accommodation Cards */}
           <div className="px-8 pb-12 space-y-6 overflow-y-auto no-scrollbar flex-grow">
-            {ACCOMMODATIONS.map((acc) => (
+            {accommodations.map((acc) => (
               <Link
                 href={`/property/${acc.slug}`}
                 key={acc.slug}
