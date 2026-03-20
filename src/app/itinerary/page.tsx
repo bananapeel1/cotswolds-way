@@ -73,8 +73,12 @@ export default async function ItineraryPage() {
   if (!templates || templates.length === 0) templates = FALLBACK_TEMPLATES;
   if (!segments || segments.length === 0) segments = FALLBACK_SEGMENTS;
 
-  // Use the first template's stops for the timeline
-  const activeTemplate = templates[0];
+  // Use the template with the most stops for the timeline (7-Day Classic)
+  const activeTemplate = templates.reduce(
+    (best: Record<string, unknown>, t: Record<string, unknown>) =>
+      ((t.itinerary_stops as unknown[]) || []).length > ((best.itinerary_stops as unknown[]) || []).length ? t : best,
+    templates[0]
+  );
   const stops = (activeTemplate.itinerary_stops || []).sort(
     (a: Record<string, unknown>, b: Record<string, unknown>) =>
       Number(a.mile_marker) - Number(b.mile_marker)
