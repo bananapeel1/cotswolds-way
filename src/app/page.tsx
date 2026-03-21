@@ -5,9 +5,12 @@ import HomeMapPreview from "@/components/HomeMapPreview";
 import { getPropertiesWithCoordinates } from "@/lib/queries";
 
 const FALLBACK_MAP_PROPERTIES = [
-  { slug: "the-lygon-arms", name: "The Lygon Arms", village: "Broadway", price: 245, longitude: -1.8563, latitude: 52.0356 },
-  { slug: "holly-house-bnb", name: "Holly House B&B", village: "Chipping Campden", price: 115, longitude: -1.7798, latitude: 52.0536 },
-  { slug: "the-white-hart-winchcombe", name: "The White Hart Inn", village: "Winchcombe", price: 120, longitude: -1.966, latitude: 51.9539 },
+  { slug: "the-lygon-arms", name: "The Lygon Arms", village: "Broadway", price: 245, propertyType: "inn", longitude: -1.8563, latitude: 52.0356 },
+  { slug: "holly-house-bnb", name: "Holly House B&B", village: "Chipping Campden", price: 115, propertyType: "bnb", longitude: -1.7798, latitude: 52.0536 },
+  { slug: "the-white-hart-winchcombe", name: "The White Hart Inn", village: "Winchcombe", price: 120, propertyType: "inn", longitude: -1.966, latitude: 51.9539 },
+  { slug: "hayles-fruit-farm", name: "Hayles Fruit Farm", village: "Winchcombe", price: 15, propertyType: "campsite", longitude: -1.927, latitude: 51.968 },
+  { slug: "the-painswick", name: "The Painswick", village: "Painswick", price: 220, propertyType: "hotel", longitude: -2.188, latitude: 51.788 },
+  { slug: "yha-bath", name: "YHA Bath", village: "Bath", price: 35, propertyType: "hostel", longitude: -2.345, latitude: 51.38 },
 ];
 
 export default async function Home() {
@@ -19,6 +22,7 @@ export default async function Home() {
       name: p.name as string,
       village: p.village as string,
       price: Math.round(Number(p.price_per_night) / 100),
+      propertyType: (p.property_type as string) || "bnb",
       longitude: Number(p.longitude) || 0,
       latitude: Number(p.latitude) || 0,
     }));

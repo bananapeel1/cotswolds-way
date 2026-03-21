@@ -9,6 +9,7 @@ interface PreviewProperty {
   name: string;
   village: string;
   price: number;
+  propertyType?: string;
   longitude: number;
   latitude: number;
 }
@@ -19,8 +20,11 @@ const TRAIL_LANDMARKS = [
   { name: "Broadway", subtitle: "Mile 12", lng: -1.8563, lat: 52.0356 },
   { name: "Winchcombe", subtitle: "Mile 25", lng: -1.966, lat: 51.9539 },
   { name: "Cleeve Hill", subtitle: "Highest Point · 330m", lng: -2.0024, lat: 51.9348 },
-  { name: "Painswick", subtitle: "Mile 50", lng: -2.1970, lat: 51.7889 },
+  { name: "Painswick", subtitle: "Queen of the Cotswolds", lng: -2.1970, lat: 51.7889 },
+  { name: "Stroud", subtitle: "Mile 56", lng: -2.2133, lat: 51.7452 },
   { name: "Dursley", subtitle: "Mile 67", lng: -2.3544, lat: 51.6813 },
+  { name: "Wotton-under-Edge", subtitle: "Mile 74", lng: -2.3541, lat: 51.6366 },
+  { name: "Old Sodbury", subtitle: "Mile 84", lng: -2.3496, lat: 51.5395 },
   { name: "Bath", subtitle: "Finish · Mile 102", lng: -2.3590, lat: 51.3811 },
 ];
 
@@ -145,11 +149,16 @@ export default function HomeMapPreview({
       properties.forEach((p) => {
         if (!p.longitude || !p.latitude || !map.current) return;
 
+        const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
+        const isHostel = p.propertyType === "hostel";
+        const markerBg = isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#173124";
+        const markerIcon = isCamping ? "⛺ " : isHostel ? "🏠 " : "";
+
         const el = document.createElement("div");
         el.style.cursor = "pointer";
         el.innerHTML = `
           <div style="
-            background: #173124;
+            background: ${markerBg};
             color: white;
             padding: 3px 8px;
             border-radius: 16px;
@@ -160,7 +169,7 @@ export default function HomeMapPreview({
             border: 2px solid white;
             transition: transform 0.2s;
             white-space: nowrap;
-          ">£${p.price}</div>
+          ">${markerIcon}£${p.price}</div>
         `;
 
         const popup = new mapboxgl.Popup({

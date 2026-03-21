@@ -120,6 +120,10 @@ export default function TrailMap({
 
       const isActive = p.slug === activeSlug;
       const price = p.price;
+      const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
+      const isHostel = p.propertyType === "hostel";
+      const markerBg = isActive ? "#541600" : isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#173124";
+      const markerIcon = isCamping ? "⛺" : isHostel ? "🏠" : "";
 
       // Create custom marker element
       const el = document.createElement("div");
@@ -127,7 +131,7 @@ export default function TrailMap({
       el.style.cursor = "pointer";
       el.innerHTML = `
         <div style="
-          background: ${isActive ? "#541600" : "#173124"};
+          background: ${markerBg};
           color: white;
           padding: 4px 10px;
           border-radius: 20px;
@@ -140,7 +144,7 @@ export default function TrailMap({
           transition: transform 0.2s;
           white-space: nowrap;
           ${isActive ? "transform: scale(1.15);" : ""}
-        ">£${price}</div>
+        ">${markerIcon ? markerIcon + " " : ""}£${price}</div>
       `;
 
       // Create popup for hover (not click)

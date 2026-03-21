@@ -4,18 +4,44 @@ import { getProperties, getPropertiesWithCoordinates } from "@/lib/queries";
 import TrailMap from "@/components/TrailMap";
 import type { MapProperty } from "@/components/TrailMap";
 
+const TYPE_LABELS: Record<string, string> = {
+  hotel: "Hotel",
+  inn: "Inn",
+  bnb: "B&B",
+  campsite: "Campsite",
+  glamping: "Glamping",
+  hostel: "Hostel",
+  cottage: "Cottage",
+};
+
+const TYPE_ICONS: Record<string, string> = {
+  hotel: "apartment",
+  inn: "local_bar",
+  bnb: "cottage",
+  campsite: "camping",
+  glamping: "holiday_village",
+  hostel: "backpack",
+  cottage: "house",
+};
+
 function mapPropertyToCard(p: Record<string, unknown>) {
   const distanceMiles = Number(p.trail_distance_miles) || 0;
   const hasTransfer = p.has_taxi_service && distanceMiles > 0.3;
+  const propertyType = (p.property_type as string) || "bnb";
+  const price = Math.round(Number(p.price_per_night) / 100);
   return {
     slug: p.slug as string,
     name: p.name as string,
     rating: Number(p.rating) || 0,
+    propertyType,
+    typeLabel: TYPE_LABELS[propertyType] || propertyType,
+    typeIcon: TYPE_ICONS[propertyType] || "home",
     distance: hasTransfer
       ? `${distanceMiles} miles with taxi transfer`
       : `${distanceMiles} miles off trail`,
     distanceIcon: hasTransfer ? "local_taxi" : "navigation",
-    price: Math.round(Number(p.price_per_night) / 100),
+    price,
+    priceLabel: propertyType === "campsite" ? `/pitch` : `/night`,
     badge: null as string | null,
     badgeColor: "",
     urgency: `${p.village} · Day ${p.day_on_trail || "?"}`,
@@ -172,13 +198,10 @@ export default async function SearchPage() {
                     alt={acc.name}
                     src={acc.image}
                   />
-                  {acc.badge && (
-                    <div
-                      className={`absolute top-2 left-2 ${acc.badgeColor} text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm`}
-                    >
-                      {acc.badge}
-                    </div>
-                  )}
+                  <div className="absolute top-2 left-2 bg-primary/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                    <span className="material-symbols-outlined text-xs">{acc.typeIcon}</span>
+                    {acc.typeLabel}
+                  </div>
                 </div>
                 <div className="p-6 flex flex-col justify-between flex-grow">
                   <div>
@@ -229,7 +252,7 @@ export default async function SearchPage() {
                       <p className="text-2xl font-headline font-bold text-primary">
                         &pound;{acc.price}
                         <span className="text-sm font-body font-normal text-secondary">
-                          /night
+                          {acc.priceLabel}
                         </span>
                       </p>
                     </div>
