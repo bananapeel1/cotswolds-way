@@ -25,12 +25,6 @@ export default function Navbar() {
             Itineraries
           </Link>
           <Link
-            href="/luggage-transfers"
-            className="text-secondary hover:text-primary transition-colors font-label text-xs font-bold uppercase tracking-widest"
-          >
-            Luggage Transfers
-          </Link>
-          <Link
             href="/plan"
             className="text-secondary hover:text-primary transition-colors font-label text-xs font-bold uppercase tracking-widest"
           >

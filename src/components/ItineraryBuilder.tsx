@@ -63,8 +63,6 @@ export default function ItineraryBuilder({
     return best;
   });
 
-  const [luggageTransfer, setLuggageTransfer] = useState(false);
-
   const activeTemplate = templates[activeIdx];
   const stops = [...(activeTemplate.itinerary_stops || [])].sort(
     (a, b) => a.mile_marker - b.mile_marker
@@ -95,9 +93,8 @@ export default function ItineraryBuilder({
   // Estimate cost (rough average)
   const estPerNight = 140;
   const nightsNeeded = activeTemplate.total_days - 1;
-  const luggageCost = luggageTransfer ? nightsNeeded * 25 : 0;
   const accCost = nightsNeeded * estPerNight;
-  const totalEst = accCost + luggageCost;
+  const totalEst = accCost;
 
   return (
     <>
@@ -341,31 +338,19 @@ export default function ItineraryBuilder({
                 </span>
               </div>
               <div className="pt-5 border-t border-white/10">
-                <button
-                  onClick={() => setLuggageTransfer(!luggageTransfer)}
-                  className="flex items-center justify-between w-full group cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-tertiary-fixed">
-                      local_shipping
+                <div className="flex items-center gap-3">
+                  <span className="material-symbols-outlined text-tertiary-fixed">
+                    directions_walk
+                  </span>
+                  <div>
+                    <span className="block font-bold text-sm">
+                      Avg. Per Night
                     </span>
-                    <div className="text-left">
-                      <span className="block font-bold text-sm">
-                        Luggage Transfer
-                      </span>
-                      <span className="text-[10px] opacity-70">
-                        &pound;25/day · {nightsNeeded} days
-                      </span>
-                    </div>
+                    <span className="text-[10px] opacity-70">
+                      Based on &pound;{estPerNight}/night average
+                    </span>
                   </div>
-                  <div className={`w-10 h-5 rounded-full relative transition-colors ${
-                    luggageTransfer ? "bg-tertiary-fixed" : "bg-white/20"
-                  }`}>
-                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${
-                      luggageTransfer ? "left-6" : "left-1"
-                    }`} />
-                  </div>
-                </button>
+                </div>
               </div>
             </div>
             <div className="bg-white/5 p-6 rounded-xl mb-8">

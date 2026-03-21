@@ -29,7 +29,7 @@ const FALLBACK_PROPERTY = {
   rating: 4.9,
   review_count: 128,
   has_boot_dryer: true,
-  has_luggage_transfer: true,
+  has_luggage_transfer: false,
   has_laundry: true,
   has_packed_lunch: true,
   has_taxi_service: true,
@@ -225,16 +225,14 @@ export default async function PropertyPage({
                         {property.trail_segment || "—"}
                       </span>
                     </div>
-                    {property.has_luggage_transfer && (
-                      <div className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-lg">
-                        <span className="text-secondary font-medium">
-                          Luggage Transfer
-                        </span>
-                        <span className="font-bold text-primary">
-                          Available
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between p-4 bg-surface-container-lowest rounded-lg">
+                      <span className="text-secondary font-medium">
+                        Property Type
+                      </span>
+                      <span className="font-bold text-primary capitalize">
+                        {(property.property_type as string) || "B&B"}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <div className="flex-1 min-h-[250px] rounded-xl overflow-hidden bg-surface-container-high border border-outline-variant/20">
@@ -412,26 +410,11 @@ export default async function PropertyPage({
                 <p className="text-center text-xs text-secondary">
                   {property.website_url ? "You\u2019ll be redirected to the property\u2019s own site" : "You won\u2019t be charged yet"}
                 </p>
-                <div className="mt-8 pt-8 border-t border-outline-variant/30">
-                  <h4 className="font-bold text-primary mb-4 text-sm">
-                    Transfer Services
-                  </h4>
-                  {property.has_luggage_transfer && (
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <span className="material-symbols-outlined text-secondary">
-                          local_shipping
-                        </span>
-                        <span className="text-xs text-on-surface-variant font-medium">
-                          Luggage Transfer Available
-                        </span>
-                      </div>
-                      <span className="material-symbols-outlined text-primary text-sm filled">
-                        check_circle
-                      </span>
-                    </div>
-                  )}
-                  {property.has_taxi_service && (
+                {property.has_taxi_service && (
+                  <div className="mt-8 pt-8 border-t border-outline-variant/30">
+                    <h4 className="font-bold text-primary mb-4 text-sm">
+                      Getting There
+                    </h4>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className="material-symbols-outlined text-secondary">
@@ -445,11 +428,8 @@ export default async function PropertyPage({
                         check_circle
                       </span>
                     </div>
-                  )}
-                  {!property.has_luggage_transfer && !property.has_taxi_service && (
-                    <p className="text-xs text-secondary italic">No transfer services at this property</p>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
               {/* Host Card */}
               <div className="mt-6 flex items-center gap-4 p-4 bg-surface-container-low rounded-xl">

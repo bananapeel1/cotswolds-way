@@ -63,7 +63,7 @@ export default function PlanMyHikePage() {
               <PlanStep
                 number="4"
                 title="Arrange Logistics"
-                description="Add luggage transfers, arrange transport to the start, and download offline maps. Our platform handles the coordination so you can focus on the walk."
+                description="Arrange transport to the start, download offline maps, and plan your daily distances. Our platform handles the coordination so you can focus on the walk."
               />
             </div>
 
@@ -134,7 +134,7 @@ export default function PlanMyHikePage() {
             />
             <PackingCard
               icon="luggage"
-              title="In Your Transfer Bag"
+              title="In Your Overnight Bag"
               items={[
                 "Clean clothes for each day",
                 "Toiletries",
@@ -185,7 +185,7 @@ export default function PlanMyHikePage() {
               months="December – February"
               icon="ac_unit"
               highlights="Dramatic skies, frosty escarpments, log fires"
-              note="Some B&Bs close. Limited luggage transfers."
+              note="Some B&Bs close. Shorter daylight hours."
             />
           </div>
         </div>

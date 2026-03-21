@@ -151,11 +151,11 @@ export default async function Home() {
               description="Our proprietary algorithm ensures your accommodation is never more than 0.5 miles from the trailhead. No long detours after a full day's walk."
             />
             <FeatureCard
-              icon="local_shipping"
+              icon="hotel"
               bgColor="bg-secondary-fixed"
               textColor="text-secondary"
-              title="Luggage Transfers"
-              description="Leave your heavy bags at breakfast; find them waiting at your next bedside. GPS-tracked logistics for total peace of mind."
+              title="Every Budget Welcome"
+              description="From £12 campsites and glamping pods to boutique hotels — find the right stay for your walking style, all verified near the trail."
             />
             <FeatureCard
               icon="event_available"
