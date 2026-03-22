@@ -51,6 +51,8 @@ function mapPropertyToCard(p: Record<string, unknown>) {
       { icon: "wifi", label: "WiFi", active: !!p.has_wifi },
     ],
     image: (p.image_url as string) || "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
+    isDogFriendly: !!p.is_dog_friendly,
+    dayOnTrail: Number(p.day_on_trail) || null,
   };
 }
 
@@ -76,6 +78,8 @@ const FALLBACK_ACCOMMODATIONS = [
       { icon: "wifi", label: "WiFi", active: true },
     ],
     image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
+    isDogFriendly: true,
+    dayOnTrail: 2,
   },
   {
     slug: "holly-house-bnb",
@@ -98,6 +102,8 @@ const FALLBACK_ACCOMMODATIONS = [
       { icon: "wifi", label: "WiFi", active: true },
     ],
     image: "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400&q=80",
+    isDogFriendly: true,
+    dayOnTrail: 1,
   },
   {
     slug: "the-white-hart-winchcombe",
@@ -120,6 +126,8 @@ const FALLBACK_ACCOMMODATIONS = [
       { icon: "wifi", label: "WiFi", active: true },
     ],
     image: "https://images.unsplash.com/photo-1510798831971-661eb04b3739?w=400&q=80",
+    isDogFriendly: true,
+    dayOnTrail: 3,
   },
 ];
 

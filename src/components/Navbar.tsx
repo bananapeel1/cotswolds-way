@@ -102,7 +102,6 @@ export default function Navbar() {
             <MobileNavLink href="/safety" icon="health_and_safety" label="Safety Guide" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/weather" icon="cloud" label="Weather" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/news" icon="newspaper" label="Trail News" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/faq" icon="help" label="FAQ" onClick={() => setMobileMenuOpen(false)} />
           </div>
 
           {/* Buttons */}

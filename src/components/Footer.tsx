@@ -54,39 +54,31 @@ export default function Footer() {
         </div>
         <div>
           <h5 className="font-bold text-xs uppercase tracking-widest mb-6 text-white">
-            Booking
+            Plan Your Walk
           </h5>
           <ul className="space-y-4 text-sm">
             <li>
               <Link
-                href="/manage"
+                href="/search"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
-                Manage Trek
+                Find Accommodation
               </Link>
             </li>
             <li>
               <Link
-                href="/gift-vouchers"
+                href="/itinerary"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
-                Gift Vouchers
+                Itinerary Builder
               </Link>
             </li>
             <li>
               <Link
-                href="/group-rates"
+                href="/account"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
-                Group Rates
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/faq"
-                className="text-primary-fixed hover:text-white transition-colors"
-              >
-                FAQ
+                My Account
               </Link>
             </li>
           </ul>
