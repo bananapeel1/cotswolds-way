@@ -78,31 +78,30 @@ export default function Navbar() {
 
         {/* Slide-in panel */}
         <div
-          className={`absolute top-0 right-0 h-full w-[80%] max-w-sm bg-white shadow-2xl transform transition-transform duration-300 ease-out ${
+          className={`absolute top-0 right-0 h-full w-[80%] max-w-sm bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-out ${
             mobileMenuOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >
           {/* Close button */}
-          <div className="flex justify-end p-6">
+          <div className="flex justify-between items-center px-6 py-5 border-b border-outline-variant/10">
+            <span className="font-headline italic font-bold text-primary text-lg">The Cotswold Way</span>
             <button
               onClick={() => setMobileMenuOpen(false)}
               aria-label="Close menu"
               className="w-10 h-10 flex items-center justify-center text-primary"
             >
-              <span className="material-symbols-outlined text-[28px]">
-                close
-              </span>
+              <span className="material-symbols-outlined text-[28px]">close</span>
             </button>
           </div>
 
-          {/* Nav links */}
-          <div className="flex flex-col px-8 overflow-y-auto flex-1">
+          {/* Nav links — scrollable middle section */}
+          <div className="flex flex-col px-6 overflow-y-auto flex-1 py-2">
             <MobileNavLink href="/" icon="home" label="Home" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/search" icon="map" label="Map Search" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/itinerary" icon="route" label="Itineraries" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/plan" icon="hiking" label="Plan My Hike" onClick={() => setMobileMenuOpen(false)} />
 
-            <div className="my-3">
+            <div className="mt-5 mb-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">The Trail</span>
             </div>
             <MobileNavLink href="/maps" icon="explore" label="Official Maps" onClick={() => setMobileMenuOpen(false)} />
@@ -111,19 +110,19 @@ export default function Navbar() {
             <MobileNavLink href="/news" icon="newspaper" label="Trail News" onClick={() => setMobileMenuOpen(false)} />
           </div>
 
-          {/* Buttons */}
-          <div className="flex flex-col gap-3 px-8 pb-8 pt-4 border-t border-outline-variant/20">
+          {/* Buttons — pinned to bottom */}
+          <div className="flex flex-col gap-3 px-6 pb-10 pt-4 border-t border-outline-variant/20">
             <Link
               href="/account"
               onClick={() => setMobileMenuOpen(false)}
-              className="text-center py-3 rounded-lg font-bold text-xs uppercase tracking-widest border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all"
+              className="text-center py-3 rounded-lg font-bold text-sm uppercase tracking-widest border-2 border-primary text-primary"
             >
               Sign In
             </Link>
             <Link
               href="/search"
               onClick={() => setMobileMenuOpen(false)}
-              className="text-center bg-tertiary text-on-tertiary py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-tertiary-container transition-all"
+              className="text-center bg-tertiary text-white py-3 rounded-lg font-bold text-sm uppercase tracking-widest"
             >
               Book Now
             </Link>
