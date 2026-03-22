@@ -22,6 +22,9 @@ export const metadata: Metadata = {
   title: "The Cotswold Way | Book Trail Accommodation",
   description:
     "The smarter way to book accommodation along the Cotswold Way. Interactive trail map, verified near-trail stays, and seamless itinerary planning for independent walkers.",
+  icons: {
+    icon: "/logo.svg",
+  },
 };
 
 export default function RootLayout({

@@ -2,6 +2,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { getPropertyBySlug, getPropertyReviews } from "@/lib/queries";
+import PropertyMap from "@/components/PropertyMap";
 
 function buildAmenities(p: Record<string, unknown>) {
   return [
@@ -235,25 +236,13 @@ export default async function PropertyPage({
                     </div>
                   </div>
                 </div>
-                <div className="flex-1 min-h-[250px] rounded-xl overflow-hidden bg-surface-container-high border border-outline-variant/20">
-                  <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 relative">
-                    <img
-                      className="absolute inset-0 w-full h-full object-cover opacity-30"
-                      alt={`Map of ${property.village}`}
-                      src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=600&q=80"
-                    />
-                    <div className="relative z-10">
-                      <span className="material-symbols-outlined text-4xl text-primary mb-2">
-                        map
-                      </span>
-                      <p className="font-bold text-primary">
-                        View Interactive Map
-                      </p>
-                      <p className="text-xs text-secondary">
-                        {property.village} area
-                      </p>
-                    </div>
-                  </div>
+                <div className="flex-1 min-h-[250px] rounded-xl overflow-hidden border border-outline-variant/20">
+                  <PropertyMap
+                    name={property.name as string}
+                    village={property.village as string}
+                    longitude={property.longitude as number | null}
+                    latitude={property.latitude as number | null}
+                  />
                 </div>
               </div>
             </section>

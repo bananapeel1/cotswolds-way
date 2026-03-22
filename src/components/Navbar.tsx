@@ -18,6 +18,12 @@ export default function Navbar() {
         </Link>
         <div className="hidden md:flex items-center gap-8">
           <Link
+            href="/"
+            className="text-secondary hover:text-primary transition-colors font-label text-xs font-bold uppercase tracking-widest"
+          >
+            Home
+          </Link>
+          <Link
             href="/search"
             className="text-secondary hover:text-primary transition-colors font-label text-xs font-bold uppercase tracking-widest"
           >
@@ -91,6 +97,7 @@ export default function Navbar() {
 
           {/* Nav links */}
           <div className="flex flex-col px-8 overflow-y-auto flex-1">
+            <MobileNavLink href="/" icon="home" label="Home" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/search" icon="map" label="Map Search" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/itinerary" icon="route" label="Itineraries" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/plan" icon="hiking" label="Plan My Hike" onClick={() => setMobileMenuOpen(false)} />
