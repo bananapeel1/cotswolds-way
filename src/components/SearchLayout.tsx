@@ -33,6 +33,7 @@ export default function SearchLayout({
   mapProperties: MapProperty[];
 }) {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<"list" | "map">("list");
 
   const selectedProperty = selectedSlug
     ? accommodations.find((a) => a.slug === selectedSlug) || null
@@ -43,10 +44,40 @@ export default function SearchLayout({
 
   return (
     <main className="flex-grow flex flex-col md:flex-row h-[calc(100vh-65px)]">
+      {/* Mobile view toggle */}
+      <div className="md:hidden flex bg-surface border-b border-outline-variant/20">
+        <button
+          onClick={() => setMobileView("list")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold uppercase tracking-widest transition-colors ${
+            mobileView === "list"
+              ? "text-primary border-b-2 border-primary"
+              : "text-secondary"
+          }`}
+        >
+          <span className="material-symbols-outlined text-lg">list</span>
+          List
+        </button>
+        <button
+          onClick={() => setMobileView("map")}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold uppercase tracking-widest transition-colors ${
+            mobileView === "map"
+              ? "text-primary border-b-2 border-primary"
+              : "text-secondary"
+          }`}
+        >
+          <span className="material-symbols-outlined text-lg">map</span>
+          Map
+        </button>
+      </div>
+
       {/* Left: Scrollable List */}
-      <section className="w-full md:w-1/2 flex flex-col bg-surface overflow-hidden border-r border-outline-variant/20">
+      <section
+        className={`w-full md:w-1/2 flex flex-col bg-surface overflow-hidden border-r border-outline-variant/20 ${
+          mobileView === "map" ? "hidden md:flex" : "flex"
+        }`}
+      >
         {/* Filter Bar */}
-        <div className="bg-surface px-8 pt-8 pb-4 z-20">
+        <div className="bg-surface px-4 sm:px-8 pt-6 sm:pt-8 pb-4 z-20">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-headline text-3xl font-bold tracking-tight text-primary">
               Accommodations
@@ -77,7 +108,7 @@ export default function SearchLayout({
         </div>
 
         {/* Accommodation Cards */}
-        <div className="px-8 pb-12 space-y-6 overflow-y-auto no-scrollbar flex-grow">
+        <div className="px-4 sm:px-8 pb-12 space-y-4 sm:space-y-6 overflow-y-auto no-scrollbar flex-grow">
           {accommodations.map((acc) => (
             <Link
               href={`/property/${acc.slug}`}
@@ -152,7 +183,12 @@ export default function SearchLayout({
       </section>
 
       {/* Right: Interactive Map */}
-      <section className="hidden md:block w-1/2 relative">
+      <section
+        className={`w-full md:w-1/2 relative ${
+          mobileView === "list" ? "hidden md:block" : "block"
+        }`}
+        style={mobileView === "map" ? { height: "calc(100vh - 65px - 49px)" } : undefined}
+      >
         <TrailMap
           properties={mapProperties}
           activeSlug={selectedSlug || undefined}

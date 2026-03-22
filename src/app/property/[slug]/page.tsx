@@ -90,7 +90,7 @@ export default async function PropertyPage({
   return (
     <>
       <Navbar />
-      <main className="max-w-screen-2xl mx-auto px-8 pt-12 pb-24">
+      <main className="max-w-screen-2xl mx-auto px-4 sm:px-8 pt-6 sm:pt-12 pb-16 sm:pb-24">
         {/* Header */}
         <header className="mb-12">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -102,7 +102,7 @@ export default async function PropertyPage({
                 </span>
                 <span>{property.village}</span>
               </nav>
-              <h1 className="font-headline text-5xl md:text-7xl font-bold text-primary tracking-tight leading-none mb-4">
+              <h1 className="font-headline text-3xl sm:text-5xl md:text-7xl font-bold text-primary tracking-tight leading-none mb-4">
                 {property.name}
               </h1>
               <div className="flex flex-wrap items-center gap-4">
@@ -141,7 +141,7 @@ export default async function PropertyPage({
         </header>
 
         {/* Gallery */}
-        <section className="grid grid-cols-1 md:grid-cols-4 grid-rows-2 gap-4 h-[600px] mb-16">
+        <section className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-3 sm:gap-4 h-[300px] sm:h-[400px] md:h-[600px] mb-8 sm:mb-16">
           <div className="md:col-span-2 md:row-span-2 relative overflow-hidden rounded-xl group">
             <img
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"

@@ -35,18 +35,18 @@ export default async function Home() {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="relative min-h-[870px] flex items-center pt-12">
+      <section className="relative min-h-[600px] md:min-h-[870px] flex items-center pt-8 md:pt-12">
         <div className="absolute inset-0 z-0">
           <img
             alt="Cotswold landscape at golden hour"
             className="w-full h-full object-cover"
             src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1920&q=80"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/70 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b md:bg-gradient-to-r from-primary/80 md:from-primary/70 to-primary/30 md:to-transparent" />
         </div>
-        <div className="container mx-auto px-8 relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="container mx-auto px-4 sm:px-8 relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
           <div className="text-white">
-            <h1 className="font-headline text-6xl md:text-8xl font-bold tracking-tight mb-6 leading-[0.9]">
+            <h1 className="font-headline text-4xl sm:text-6xl md:text-8xl font-bold tracking-tight mb-4 sm:mb-6 leading-[0.9]">
               A Path <br />
               Through <span className="italic font-light">History</span>
             </h1>
@@ -57,7 +57,7 @@ export default async function Home() {
           </div>
 
           {/* Search Widget */}
-          <div className="bg-white/95 backdrop-blur-md p-8 rounded-xl shadow-2xl max-w-md ml-auto border border-white/20">
+          <div className="bg-white/95 backdrop-blur-md p-6 sm:p-8 rounded-xl shadow-2xl max-w-md lg:ml-auto border border-white/20">
             <h3 className="font-headline text-2xl text-primary font-bold mb-6">
               Start Your Journey
             </h3>
@@ -123,7 +123,7 @@ export default async function Home() {
       </section>
 
       {/* Why Choose Us */}
-      <section className="py-24 px-8 bg-surface">
+      <section className="py-16 sm:py-24 px-4 sm:px-8 bg-surface">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row gap-16 items-end mb-20">
             <div className="md:w-1/2">
@@ -169,7 +169,7 @@ export default async function Home() {
       </section>
 
       {/* Signature Itineraries */}
-      <section className="py-24 px-8 bg-surface-container-low">
+      <section className="py-16 sm:py-24 px-4 sm:px-8 bg-surface-container-low">
         <div className="max-w-7xl mx-auto">
           <div className="mb-16 text-center">
             <h2 className="font-headline text-5xl text-primary font-bold mb-4">
@@ -262,7 +262,7 @@ export default async function Home() {
       </section>
 
       {/* Interactive Map Preview */}
-      <section className="py-24 px-8 overflow-hidden bg-surface">
+      <section className="py-16 sm:py-24 px-4 sm:px-8 overflow-hidden bg-surface">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div className="order-2 lg:order-1">
@@ -316,7 +316,7 @@ export default async function Home() {
       </section>
 
       {/* Plan with Confidence */}
-      <section className="py-24 px-8 bg-surface-container-highest">
+      <section className="py-16 sm:py-24 px-4 sm:px-8 bg-surface-container-highest">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="font-headline text-4xl text-primary font-bold mb-12">
             Plan with Confidence

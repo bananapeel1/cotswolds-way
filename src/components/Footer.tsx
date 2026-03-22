@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function Footer() {
   return (
-    <footer className="bg-primary text-secondary-container w-full py-12 px-8 border-t border-primary-container">
+    <footer className="bg-primary text-secondary-container w-full py-10 sm:py-12 px-4 sm:px-8 border-t border-primary-container">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-12 max-w-7xl mx-auto">
         <div>
           <div className="text-surface font-headline italic text-2xl mb-6">
@@ -20,7 +20,7 @@ export default function Footer() {
           <ul className="space-y-4 text-sm">
             <li>
               <Link
-                href="#"
+                href="/maps"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 Official Maps
@@ -28,7 +28,7 @@ export default function Footer() {
             </li>
             <li>
               <Link
-                href="#"
+                href="/safety"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 Safety Guide
@@ -36,7 +36,7 @@ export default function Footer() {
             </li>
             <li>
               <Link
-                href="#"
+                href="/weather"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 Weather Station
@@ -44,7 +44,7 @@ export default function Footer() {
             </li>
             <li>
               <Link
-                href="#"
+                href="/news"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 Trail News
@@ -59,7 +59,7 @@ export default function Footer() {
           <ul className="space-y-4 text-sm">
             <li>
               <Link
-                href="#"
+                href="/manage"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 Manage Trek
@@ -67,7 +67,7 @@ export default function Footer() {
             </li>
             <li>
               <Link
-                href="#"
+                href="/gift-vouchers"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 Gift Vouchers
@@ -75,7 +75,7 @@ export default function Footer() {
             </li>
             <li>
               <Link
-                href="#"
+                href="/group-rates"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 Group Rates
@@ -83,7 +83,7 @@ export default function Footer() {
             </li>
             <li>
               <Link
-                href="#"
+                href="/faq"
                 className="text-primary-fixed hover:text-white transition-colors"
               >
                 FAQ
@@ -113,13 +113,13 @@ export default function Footer() {
       <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-primary-container flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-primary-fixed/60">
         <div>&copy; 2025 The Cotswold Way. Part of the National Trails collection.</div>
         <div className="flex gap-6">
-          <Link href="#" className="hover:text-white transition-colors">
+          <Link href="/privacy" className="hover:text-white transition-colors">
             Privacy
           </Link>
-          <Link href="#" className="hover:text-white transition-colors">
+          <Link href="/terms" className="hover:text-white transition-colors">
             Terms
           </Link>
-          <Link href="#" className="hover:text-white transition-colors">
+          <Link href="/accessibility" className="hover:text-white transition-colors">
             Accessibility
           </Link>
         </div>
