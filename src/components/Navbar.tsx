@@ -41,13 +41,20 @@ export default function Navbar() {
           >
             Plan My Hike
           </Link>
+          <Link
+            href="/explore"
+            className="text-secondary hover:text-primary transition-colors font-label text-xs font-bold uppercase tracking-widest"
+          >
+            Trail Explorer
+          </Link>
         </div>
         <div className="hidden md:flex items-center gap-4">
-          <Link href="/account" className="text-secondary font-bold text-xs uppercase tracking-widest hover:text-primary transition-all">
-            Sign In
+          <Link href="/explore" className="text-secondary font-bold text-xs uppercase tracking-widest hover:text-primary transition-all flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base">explore</span>
+            Trail Explorer
           </Link>
           <Link href="/search" className="bg-tertiary text-on-tertiary px-6 py-2.5 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-tertiary-container transition-all">
-            Book Now
+            Find a Stay
           </Link>
         </div>
 
@@ -100,11 +107,12 @@ export default function Navbar() {
             <MobileNavLink href="/search" icon="map" label="Map Search" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/itinerary" icon="route" label="Itineraries" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/plan" icon="hiking" label="Plan My Hike" onClick={() => setMobileMenuOpen(false)} />
+            <MobileNavLink href="/explore" icon="explore" label="Trail Explorer" onClick={() => setMobileMenuOpen(false)} />
 
             <div className="mt-5 mb-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">The Trail</span>
             </div>
-            <MobileNavLink href="/maps" icon="explore" label="Official Maps" onClick={() => setMobileMenuOpen(false)} />
+            <MobileNavLink href="/maps" icon="travel_explore" label="Official Maps" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/safety" icon="health_and_safety" label="Safety Guide" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/weather" icon="cloud" label="Weather" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/news" icon="newspaper" label="Trail News" onClick={() => setMobileMenuOpen(false)} />
@@ -113,18 +121,19 @@ export default function Navbar() {
           {/* Buttons — pinned to bottom */}
           <div className="flex flex-col gap-3 px-6 pb-10 pt-4 border-t border-outline-variant/20">
             <Link
-              href="/account"
+              href="/explore"
               onClick={() => setMobileMenuOpen(false)}
-              className="text-center py-3 rounded-lg font-bold text-sm uppercase tracking-widest border-2 border-primary text-primary"
+              className="text-center py-3 rounded-lg font-bold text-sm uppercase tracking-widest border-2 border-primary text-primary flex items-center justify-center gap-2"
             >
-              Sign In
+              <span className="material-symbols-outlined text-base">explore</span>
+              Trail Explorer
             </Link>
             <Link
               href="/search"
               onClick={() => setMobileMenuOpen(false)}
               className="text-center bg-tertiary text-white py-3 rounded-lg font-bold text-sm uppercase tracking-widest"
             >
-              Book Now
+              Find a Stay
             </Link>
           </div>
         </div>
