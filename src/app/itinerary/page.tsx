@@ -1,6 +1,7 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ItineraryBuilder from "@/components/ItineraryBuilder";
+import ItineraryTemplates from "@/components/ItineraryTemplates";
 import { getItineraryTemplates, getTrailSegments } from "@/lib/queries";
 
 const FALLBACK_TEMPLATES = [
@@ -64,11 +65,22 @@ export default async function ItineraryPage() {
   return (
     <>
       <Navbar />
-      <main className="max-w-screen-2xl mx-auto px-8 pt-12 pb-24">
-        <ItineraryBuilder
-          templates={templates as Parameters<typeof ItineraryBuilder>[0]["templates"]}
-          segments={segments as Parameters<typeof ItineraryBuilder>[0]["segments"]}
-        />
+      <main className="max-w-screen-xl mx-auto px-4 sm:px-8 pt-12 pb-24 space-y-20">
+        {/* Template library with elevation profiles and popular stages */}
+        <ItineraryTemplates />
+
+        {/* Divider */}
+        <div className="border-t border-outline-variant/20 pt-12">
+          <div className="text-center mb-10">
+            <span className="text-tertiary font-bold uppercase tracking-[0.3em] text-xs mb-3 block">Custom Builder</span>
+            <h2 className="font-headline text-4xl font-bold text-primary">Build Your Own</h2>
+            <p className="text-secondary mt-3 max-w-xl mx-auto">Drag stops, adjust days, and personalise a template to your exact pace and preferences.</p>
+          </div>
+          <ItineraryBuilder
+            templates={templates as Parameters<typeof ItineraryBuilder>[0]["templates"]}
+            segments={segments as Parameters<typeof ItineraryBuilder>[0]["segments"]}
+          />
+        </div>
       </main>
       <Footer />
     </>

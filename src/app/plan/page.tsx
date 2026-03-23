@@ -1,6 +1,7 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+import HikeWizard from "@/components/HikeWizard";
 
 export default function PlanMyHikePage() {
   return (
@@ -28,6 +29,24 @@ export default function PlanMyHikePage() {
             Everything you need to prepare for the Cotswold Way. From choosing your
             pace to packing the right gear.
           </p>
+        </div>
+      </section>
+
+      {/* Wizard */}
+      <section className="py-16 px-4 sm:px-8 bg-surface">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-10">
+            <span className="text-tertiary font-bold uppercase tracking-[0.3em] text-xs mb-3 block">
+              Interactive Planner
+            </span>
+            <h2 className="font-headline text-4xl md:text-5xl text-primary font-bold">
+              Build Your Itinerary
+            </h2>
+            <p className="text-secondary mt-4 max-w-xl mx-auto">
+              Tell us your preferences and we&apos;ll calculate your daily stages, suggest overnight stops, and link you to accommodation.
+            </p>
+          </div>
+          <HikeWizard />
         </div>
       </section>
 
@@ -93,7 +112,7 @@ export default function PlanMyHikePage() {
       </section>
 
       {/* What to Pack */}
-      <section className="py-24 px-8 bg-surface-container-low">
+      <section className="py-24 px-8 bg-surface-container-low/60">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="font-headline text-4xl text-primary font-bold mb-4">
