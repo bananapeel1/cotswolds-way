@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Newsreader, Manrope } from "next/font/google";
 import "./globals.css";
-import { AuthProvider } from "@/context/AuthContext";
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
@@ -44,7 +43,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col font-body bg-background text-on-surface">
-        <AuthProvider>{children}</AuthProvider>
+        {children}
       </body>
     </html>
   );
