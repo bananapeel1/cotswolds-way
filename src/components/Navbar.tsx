@@ -78,7 +78,7 @@ export default function Navbar() {
 
         {/* Slide-in panel */}
         <div
-          className={`absolute top-0 right-0 h-full w-[80%] max-w-sm bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-out ${
+          className={`absolute top-0 right-0 h-screen w-[80%] max-w-sm bg-white shadow-2xl flex flex-col transform transition-transform duration-300 ease-out ${
             mobileMenuOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >
@@ -95,7 +95,7 @@ export default function Navbar() {
           </div>
 
           {/* Nav links — scrollable middle section */}
-          <div className="flex flex-col px-6 overflow-y-auto flex-1 py-2">
+          <div className="flex flex-col px-6 overflow-y-auto flex-1 min-h-0 py-2">
             <MobileNavLink href="/" icon="home" label="Home" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/search" icon="map" label="Map Search" onClick={() => setMobileMenuOpen(false)} />
             <MobileNavLink href="/itinerary" icon="route" label="Itineraries" onClick={() => setMobileMenuOpen(false)} />

@@ -35,29 +35,29 @@ export default async function Home() {
       <Navbar />
 
       {/* Hero Section */}
-      <section className="relative min-h-[600px] md:min-h-[870px] flex items-center pt-8 md:pt-12">
+      <section className="relative min-h-[100svh] md:min-h-[870px] flex items-start md:items-center pt-16 pb-8 md:pt-12 md:pb-0">
         <div className="absolute inset-0 z-0">
           <img
             alt="Cotswold landscape at golden hour"
             className="w-full h-full object-cover"
             src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1920&q=80"
           />
-          <div className="absolute inset-0 bg-gradient-to-b md:bg-gradient-to-r from-primary/80 md:from-primary/70 to-primary/30 md:to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b md:bg-gradient-to-r from-primary/85 md:from-primary/70 to-primary/40 md:to-transparent" />
         </div>
-        <div className="container mx-auto px-4 sm:px-8 relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
+        <div className="container mx-auto px-4 sm:px-8 relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-12 items-start lg:items-center w-full">
           <div className="text-white">
-            <h1 className="font-headline text-4xl sm:text-6xl md:text-8xl font-bold tracking-tight mb-4 sm:mb-6 leading-[0.9]">
+            <h1 className="font-headline text-5xl sm:text-6xl md:text-8xl font-bold tracking-tight mb-3 sm:mb-6 leading-[0.9]">
               A Path <br />
               Through <span className="italic font-light">History</span>
             </h1>
-            <p className="font-body text-xl max-w-lg mb-8 text-white/90 leading-relaxed">
+            <p className="font-body text-base sm:text-xl max-w-lg mb-6 sm:mb-8 text-white/90 leading-relaxed">
               Experience the 102-mile National Trail with curated editorial
               guides, boutique stays, and seamless logistics.
             </p>
           </div>
 
           {/* Search Widget */}
-          <div className="bg-white/95 backdrop-blur-md p-6 sm:p-8 rounded-xl shadow-2xl max-w-md lg:ml-auto border border-white/20">
+          <div className="bg-white/95 backdrop-blur-md p-5 sm:p-8 rounded-xl shadow-2xl w-full max-w-md lg:ml-auto border border-white/20">
             <h3 className="font-headline text-2xl text-primary font-bold mb-6">
               Start Your Journey
             </h3>

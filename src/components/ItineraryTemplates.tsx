@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 
 // Elevation profile data (mile, elevation in metres)
@@ -98,34 +98,43 @@ const DIFFICULTY_COLOUR: Record<string, string> = {
   strenuous: "bg-red-100 text-red-800",
 };
 
-// SVG elevation profile
+interface TooltipState {
+  x: number;
+  y: number;
+  mile: number;
+  elev: number;
+  visible: boolean;
+}
+
+// SVG elevation profile with hover tooltip
 function ElevationProfile({ highlightDay, stops }: {
   highlightDay?: number;
   stops: { day: number; from: string; to: string; miles: number }[];
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [tooltip, setTooltip] = useState<TooltipState>({ x: 0, y: 0, mile: 0, elev: 0, visible: false });
+
   const W = 800;
-  const H = 120;
-  const pad = { left: 8, right: 8, top: 8, bottom: 20 };
+  const H = 140;
+  const pad = { left: 8, right: 8, top: 12, bottom: 24 };
   const innerW = W - pad.left - pad.right;
   const innerH = H - pad.top - pad.bottom;
-
   const maxElev = 340;
-  const minElev = 0;
 
-  function toX(mile: number) {
-    return pad.left + (mile / 102) * innerW;
-  }
-  function toY(elev: number) {
-    return pad.top + innerH - ((elev - minElev) / (maxElev - minElev)) * innerH;
-  }
+  const toX = (mile: number) => pad.left + (mile / 102) * innerW;
+  const toY = (elev: number) => pad.top + innerH - (elev / maxElev) * innerH;
 
-  const pathD =
+  const fillPath =
     ELEVATION_POINTS.map(([m, e], i) =>
       `${i === 0 ? "M" : "L"}${toX(m).toFixed(1)},${toY(e).toFixed(1)}`
     ).join(" ") +
     ` L${toX(102).toFixed(1)},${(pad.top + innerH).toFixed(1)} L${toX(0).toFixed(1)},${(pad.top + innerH).toFixed(1)} Z`;
 
-  // Accumulate miles to find day boundaries
+  const linePath = ELEVATION_POINTS.map(([m, e], i) =>
+    `${i === 0 ? "M" : "L"}${toX(m).toFixed(1)},${toY(e).toFixed(1)}`
+  ).join(" ");
+
+  // Accumulate day boundaries
   let cumMile = 0;
   const dayBoundaries: { day: number; mile: number }[] = [];
   for (const stop of stops) {
@@ -133,84 +142,114 @@ function ElevationProfile({ highlightDay, stops }: {
     dayBoundaries.push({ day: stop.day, mile: Math.min(cumMile, 102) });
   }
 
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    const mile = Math.max(0, Math.min(102, ((svgX - pad.left) / innerW) * 102));
+
+    // Find nearest elevation point
+    let nearest = ELEVATION_POINTS[0];
+    let minDist = Infinity;
+    for (const pt of ELEVATION_POINTS) {
+      const d = Math.abs(pt[0] - mile);
+      if (d < minDist) { minDist = d; nearest = pt; }
+    }
+
+    const px = toX(nearest[0]);
+    const py = toY(nearest[1]);
+    setTooltip({ x: px, y: py, mile: nearest[0], elev: nearest[1], visible: true });
+  }, [innerW]);
+
+  const handleMouseLeave = useCallback(() => {
+    setTooltip(t => ({ ...t, visible: false }));
+  }, []);
+
+  // Tooltip box position (flip if too far right)
+  const tipBoxX = tooltip.x > W * 0.7 ? tooltip.x - 90 : tooltip.x + 10;
+  const tipBoxY = Math.max(pad.top, tooltip.y - 36);
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 120 }}>
-      <defs>
-        <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#173124" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="#173124" stopOpacity="0.05" />
-        </linearGradient>
-        {highlightDay && (
-          <clipPath id={`dayClip${highlightDay}`}>
-            {(() => {
-              const prev = highlightDay === 1 ? 0 : dayBoundaries[highlightDay - 2]?.mile ?? 0;
-              const curr = dayBoundaries[highlightDay - 1]?.mile ?? 102;
-              const x1 = toX(prev);
-              const x2 = toX(curr);
-              return <rect x={x1} y={0} width={x2 - x1} height={H} />;
-            })()}
-          </clipPath>
-        )}
-      </defs>
+    <div className="relative select-none">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full cursor-crosshair"
+        style={{ height: 140 }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
+        <defs>
+          <linearGradient id="elevGrad2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#173124" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#173124" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
 
-      {/* Day boundary lines */}
-      {dayBoundaries.slice(0, -1).map(({ day, mile }) => (
-        <line
-          key={day}
-          x1={toX(mile)}
-          y1={pad.top}
-          x2={toX(mile)}
-          y2={pad.top + innerH}
-          stroke="#173124"
-          strokeOpacity="0.15"
-          strokeWidth="1"
-          strokeDasharray="3,3"
-        />
-      ))}
-
-      {/* Highlight band */}
-      {highlightDay && (() => {
-        const prev = highlightDay === 1 ? 0 : dayBoundaries[highlightDay - 2]?.mile ?? 0;
-        const curr = dayBoundaries[highlightDay - 1]?.mile ?? 102;
-        return (
-          <rect
-            x={toX(prev)}
-            y={pad.top}
-            width={toX(curr) - toX(prev)}
-            height={innerH}
-            fill="#541600"
-            fillOpacity="0.08"
+        {/* Day boundary lines */}
+        {dayBoundaries.slice(0, -1).map(({ day, mile }) => (
+          <line key={day}
+            x1={toX(mile)} y1={pad.top} x2={toX(mile)} y2={pad.top + innerH}
+            stroke="#173124" strokeOpacity="0.12" strokeWidth="1" strokeDasharray="3,3"
           />
-        );
-      })()}
+        ))}
 
-      {/* Elevation fill */}
-      <path d={pathD} fill="url(#elevGrad)" />
+        {/* Highlight band */}
+        {highlightDay && (() => {
+          const prev = highlightDay === 1 ? 0 : dayBoundaries[highlightDay - 2]?.mile ?? 0;
+          const curr = dayBoundaries[highlightDay - 1]?.mile ?? 102;
+          return (
+            <rect x={toX(prev)} y={pad.top} width={toX(curr) - toX(prev)} height={innerH}
+              fill="#541600" fillOpacity="0.08" rx="2" />
+          );
+        })()}
 
-      {/* Elevation line */}
-      <path
-        d={ELEVATION_POINTS.map(([m, e], i) =>
-          `${i === 0 ? "M" : "L"}${toX(m).toFixed(1)},${toY(e).toFixed(1)}`
-        ).join(" ")}
-        fill="none"
-        stroke="#173124"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
+        {/* Fill */}
+        <path d={fillPath} fill="url(#elevGrad2)" />
+        {/* Line */}
+        <path d={linePath} fill="none" stroke="#173124" strokeWidth="2" strokeLinejoin="round" />
 
-      {/* Highest point marker */}
-      <circle cx={toX(22.8)} cy={toY(330)} r="3" fill="#541600" />
-      <text x={toX(22.8)} y={toY(330) - 6} textAnchor="middle" fontSize="8" fill="#541600" fontWeight="700">
-        330m
-      </text>
+        {/* Highest point pin */}
+        <circle cx={toX(22.8)} cy={toY(330)} r="4" fill="#541600" />
+        <line x1={toX(22.8)} y1={toY(330)} x2={toX(22.8)} y2={toY(330) - 14} stroke="#541600" strokeWidth="1" />
+        {/* Use foreignObject so we get proper font rendering */}
 
-      {/* Mile labels */}
-      {[0, 25, 50, 75, 102].map((m) => (
-        <text key={m} x={toX(m)} y={H - 4} textAnchor="middle" fontSize="8" fill="#665d4e">
-          {m === 102 ? "102mi" : `${m}mi`}
+        {/* Mile axis labels — explicit font-family to avoid Newsreader rendering as icons */}
+        {[0, 25, 51, 76, 102].map((m) => (
+          <text key={m} x={toX(m)} y={H - 6} textAnchor="middle"
+            style={{ fontSize: 10, fontFamily: "system-ui, -apple-system, sans-serif", fill: "#665d4e" }}>
+            {m}mi
+          </text>
+        ))}
+
+        {/* Highest point label */}
+        <text x={toX(22.8)} y={toY(330) - 18} textAnchor="middle"
+          style={{ fontSize: 10, fontFamily: "system-ui, -apple-system, sans-serif", fill: "#541600", fontWeight: 700 }}>
+          Cleeve Hill 330m
         </text>
-      ))}
-    </svg>
+
+        {/* Hover crosshair */}
+        {tooltip.visible && (
+          <>
+            <line x1={tooltip.x} y1={pad.top} x2={tooltip.x} y2={pad.top + innerH}
+              stroke="#541600" strokeWidth="1" strokeOpacity="0.4" strokeDasharray="3,2" />
+            <circle cx={tooltip.x} cy={tooltip.y} r="4" fill="#541600" stroke="white" strokeWidth="2" />
+
+            {/* Tooltip box */}
+            <rect x={tipBoxX} y={tipBoxY} width="82" height="30" rx="4"
+              fill="#173124" opacity="0.92" />
+            <text x={tipBoxX + 8} y={tipBoxY + 12}
+              style={{ fontSize: 10, fontFamily: "system-ui, -apple-system, sans-serif", fill: "white", fontWeight: 700 }}>
+              {tooltip.elev}m elevation
+            </text>
+            <text x={tipBoxX + 8} y={tipBoxY + 24}
+              style={{ fontSize: 9, fontFamily: "system-ui, -apple-system, sans-serif", fill: "rgba(255,255,255,0.7)" }}>
+              Mile {tooltip.mile.toFixed(1)}
+            </text>
+          </>
+        )}
+      </svg>
+    </div>
   );
 }
 

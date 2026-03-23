@@ -73,7 +73,7 @@ export default function PropertyMap({ name, village, longitude, latitude }: Prop
       // Trail path source
       map.current.addSource("trail", {
         type: "geojson",
-        data: "/trail.geojson",
+        data: "/data/cotswold-way.geojson",
       });
 
       map.current.addLayer({
