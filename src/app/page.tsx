@@ -41,68 +41,45 @@ export default async function Home() {
             </p>
           </div>
 
-          {/* Search Widget */}
+          {/* Quick Stats + CTA */}
           <div className="bg-white/95 backdrop-blur-md p-5 sm:p-8 rounded-xl shadow-2xl w-full max-w-md lg:ml-auto border border-white/20">
-            <h3 className="font-headline text-2xl text-primary font-bold mb-6">
-              Start Your Journey
+            <h3 className="font-headline text-2xl text-primary font-bold mb-2">
+              102 Miles of Pure England
             </h3>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                    Check-in
-                  </label>
-                  <input
-                    className="bg-surface-container-low border-none rounded-lg p-3 text-sm focus:ring-0 border-b-2 border-transparent focus:border-b-tertiary transition-all"
-                    type="date"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                    Check-out
-                  </label>
-                  <input
-                    className="bg-surface-container-low border-none rounded-lg p-3 text-sm focus:ring-0 border-b-2 border-transparent focus:border-b-tertiary transition-all"
-                    type="date"
-                  />
-                </div>
+            <p className="text-secondary text-sm mb-6">
+              From Chipping Campden to Bath through honey-stone villages, ancient woodlands, and sweeping escarpments.
+            </p>
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center p-3 bg-surface-container-low rounded-lg">
+                <span className="material-symbols-outlined text-tertiary mb-1 block">distance</span>
+                <span className="text-xl font-bold text-primary block">102</span>
+                <span className="text-[10px] text-secondary font-bold uppercase tracking-wider">Miles</span>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                  Starting Point
-                </label>
-                <select className="bg-surface-container-low border-none rounded-lg p-3 text-sm focus:ring-0 appearance-none cursor-pointer">
-                  <option>Chipping Campden (North)</option>
-                  <option>Bath (South)</option>
-                  <option>Painswick (Mid-point)</option>
-                </select>
+              <div className="text-center p-3 bg-surface-container-low rounded-lg">
+                <span className="material-symbols-outlined text-tertiary mb-1 block">hotel</span>
+                <span className="text-xl font-bold text-primary block">14</span>
+                <span className="text-[10px] text-secondary font-bold uppercase tracking-wider">Stays</span>
               </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">
-                  Number of Walkers
-                </label>
-                <div className="flex items-center bg-surface-container-low rounded-lg p-1">
-                  <button className="w-10 h-10 flex items-center justify-center text-primary font-bold hover:bg-surface-container-high rounded-md">
-                    -
-                  </button>
-                  <span className="flex-1 text-center font-bold text-sm">
-                    2 Walkers
-                  </span>
-                  <button className="w-10 h-10 flex items-center justify-center text-primary font-bold hover:bg-surface-container-high rounded-md">
-                    +
-                  </button>
-                </div>
+              <div className="text-center p-3 bg-surface-container-low rounded-lg">
+                <span className="material-symbols-outlined text-tertiary mb-1 block">schedule</span>
+                <span className="text-xl font-bold text-primary block">7-14</span>
+                <span className="text-[10px] text-secondary font-bold uppercase tracking-wider">Days</span>
               </div>
-              <Link
-                href="/search"
-                className="w-full bg-tertiary text-white py-4 rounded-lg font-bold uppercase tracking-widest text-xs hover:bg-tertiary-container transition-all flex items-center justify-center gap-2 mt-4"
-              >
-                Search Availability{" "}
-                <span className="material-symbols-outlined text-sm">
-                  arrow_forward
-                </span>
-              </Link>
             </div>
+            <Link
+              href="/search"
+              className="w-full bg-tertiary text-white py-4 rounded-lg font-bold uppercase tracking-widest text-xs hover:bg-tertiary-container transition-all flex items-center justify-center gap-2"
+            >
+              Browse Accommodations
+              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+            </Link>
+            <Link
+              href="/itinerary"
+              className="w-full bg-primary text-white py-3 rounded-lg font-bold uppercase tracking-widest text-xs hover:bg-primary-container transition-all flex items-center justify-center gap-2 mt-3"
+            >
+              Plan Your Itinerary
+              <span className="material-symbols-outlined text-sm">route</span>
+            </Link>
           </div>
         </div>
       </section>

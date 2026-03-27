@@ -1,5 +1,5 @@
 import Navbar from "@/components/Navbar";
-import { getProperties, getPropertiesWithCoordinates } from "@/lib/queries";
+import { getEnrichedProperties, getPropertiesWithCoordinates } from "@/lib/queries";
 import type { MapProperty } from "@/components/TrailMap";
 import SearchLayout from "@/components/SearchLayout";
 
@@ -22,7 +22,7 @@ export default async function SearchPage({
 }) {
   const sp = await searchParams;
 
-  const properties = await getProperties({
+  const properties = await getEnrichedProperties({
     village: sp.village,
     dogFriendly: sp.dog === "true",
     day: sp.day ? parseInt(sp.day) : undefined,
@@ -55,9 +55,10 @@ export default async function SearchPage({
         { icon: "pets",         label: "Dog friendly", active: p.is_dog_friendly },
         { icon: "wifi",         label: "WiFi",         active: p.has_wifi },
       ],
-      image: p.image_url || "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
+      image: p.booking?.photos?.[0]?.url || p.image_url || "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80",
       isDogFriendly: p.is_dog_friendly,
       dayOnTrail: p.day_on_trail,
+      hasLiveAvailability: !!p.booking?.hotelId,
     };
   });
 

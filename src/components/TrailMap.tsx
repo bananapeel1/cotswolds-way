@@ -8,7 +8,7 @@ export interface MapProperty {
   slug: string;
   name: string;
   village: string;
-  price: number;
+  price?: number;
   rating: number;
   propertyType: string;
   dayOnTrail: number;
@@ -119,11 +119,10 @@ export default function TrailMap({
       if (!p.longitude || !p.latitude) return;
 
       const isActive = p.slug === activeSlug;
-      const price = p.price;
       const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
       const isHostel = p.propertyType === "hostel";
       const markerBg = isActive ? "#541600" : isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#173124";
-      const markerIcon = isCamping ? "⛺" : isHostel ? "🏠" : "";
+      const markerIcon = isCamping ? "⛺" : isHostel ? "🏠" : "🏨";
 
       // Create custom marker element
       const el = document.createElement("div");
@@ -133,18 +132,18 @@ export default function TrailMap({
         <div style="
           background: ${markerBg};
           color: white;
-          padding: 4px 10px;
+          padding: 5px 12px;
           border-radius: 20px;
           font-size: 12px;
           font-weight: 700;
           font-family: 'Manrope', sans-serif;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.25);
           border: 2px solid white;
           cursor: pointer;
-          transition: transform 0.2s;
+          transition: transform 0.2s, box-shadow 0.2s;
           white-space: nowrap;
-          ${isActive ? "transform: scale(1.15);" : ""}
-        ">${markerIcon ? markerIcon + " " : ""}£${price}</div>
+          ${isActive ? "transform: scale(1.15); box-shadow: 0 4px 16px rgba(84,22,0,0.4);" : ""}
+        ">${markerIcon}</div>
       `;
 
       // Create popup for hover (not click)
@@ -154,17 +153,12 @@ export default function TrailMap({
         closeOnClick: false,
         className: "trail-map-popup",
       }).setHTML(`
-        <div style="font-family: 'Manrope', sans-serif; padding: 4px;">
-          <p style="font-weight: 800; font-size: 13px; color: #173124; margin: 0 0 2px;">
+        <div style="font-family: 'Manrope', sans-serif; padding: 6px 4px;">
+          <p style="font-weight: 800; font-size: 13px; color: #173124; margin: 0 0 3px;">
             ${p.name}
           </p>
-          <p style="font-size: 11px; color: #665d4e; margin: 0 0 4px;">
-            ${p.village} · Day ${p.dayOnTrail}
-          </p>
-          <p style="font-size: 12px; margin: 0;">
-            <strong style="color: #173124;">£${price}</strong>
-            <span style="color: #665d4e;">/night</span>
-            <span style="margin-left: 8px; color: #541600;">★ ${p.rating}</span>
+          <p style="font-size: 11px; color: #665d4e; margin: 0;">
+            ${p.village} · Day ${p.dayOnTrail} · <span style="color: #541600;">★ ${p.rating}</span>
           </p>
         </div>
       `);

@@ -2,9 +2,11 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPropertyBySlug } from "@/lib/queries";
+import { getEnrichedPropertyBySlug, getBookingHotelId } from "@/lib/queries";
 import type { Property } from "@/lib/queries";
 import PropertyMap from "@/components/PropertyMap";
+import BookingWidget from "@/components/BookingWidget";
+import BookingReviews from "@/components/BookingReviews";
 
 function buildAmenities(p: Property) {
   return [
@@ -17,10 +19,6 @@ function buildAmenities(p: Property) {
   ];
 }
 
-const SAMPLE_REVIEWS = [
-  { id: "1", rating: 5, title: "Perfect end to the day", body: "The boot room was a lifesaver after a muddy stretch. Breakfast was hearty enough to fuel the next stage.", guest_initials: "JD", guest_name: "James Davies", walked_date: "May 2024" },
-  { id: "2", rating: 5, title: "True Walker Focus",       body: "They understood our logistics perfectly. Luggage was waiting in the room and the laundry service was efficient.", guest_initials: "SR", guest_name: "Sarah Roberts", walked_date: "June 2024" },
-];
 
 export default async function PropertyPage({
   params,
@@ -28,16 +26,31 @@ export default async function PropertyPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const property = await getPropertyBySlug(slug);
+  const property = await getEnrichedPropertyBySlug(slug);
 
   if (!property) notFound();
 
   const price = Math.round(property.price_per_night / 100);
   const amenities = buildAmenities(property);
-  const rating = property.rating;
+  const rating = property.booking?.reviewScore || property.rating;
+  const reviewCount = property.booking?.reviewCount || property.review_count;
   const fullStars = Math.floor(rating);
   const hasHalf = rating - fullStars >= 0.3;
   const mainImage = property.image_url || "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1200&q=80";
+  const bookingHotelId = getBookingHotelId(slug);
+
+  // Build gallery images: curated hero + Booking.com photos or fallback placeholders
+  const bookingPhotos = property.booking?.photos ?? [];
+  const galleryImages = [
+    mainImage,
+    ...(bookingPhotos.length >= 3
+      ? bookingPhotos.slice(0, 3).map((p) => p.url)
+      : [
+          "https://images.unsplash.com/photo-1616594039964-ae9021a400a0?w=600&q=80",
+          "https://images.unsplash.com/photo-1533920379810-6bed1640a959?w=600&q=80",
+          "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1200&q=80",
+        ]),
+  ];
 
   return (
     <>
@@ -63,7 +76,7 @@ export default async function PropertyPage({
                   ))}
                   {hasHalf && <span className="material-symbols-outlined filled">star_half</span>}
                   <span className="ml-1 font-bold text-on-background">{rating}</span>
-                  <span className="text-secondary font-normal">({property.review_count} reviews)</span>
+                  <span className="text-secondary font-normal">({reviewCount} reviews)</span>
                 </div>
                 <div className="w-1 h-1 rounded-full bg-outline-variant" />
                 <div className="flex items-center gap-1 font-semibold text-primary">
@@ -94,17 +107,17 @@ export default async function PropertyPage({
         {/* Gallery */}
         <section className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-2 gap-3 sm:gap-4 h-[300px] sm:h-[400px] md:h-[600px] mb-8 sm:mb-16">
           <div className="md:col-span-2 md:row-span-2 relative overflow-hidden rounded-xl group">
-            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={property.name} src={mainImage} />
+            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={property.name} src={galleryImages[0]} />
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
           </div>
           <div className="relative overflow-hidden rounded-xl group">
-            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt="Cozy bedroom" src="https://images.unsplash.com/photo-1616594039964-ae9021a400a0?w=600&q=80" />
+            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={`${property.name} photo`} src={galleryImages[1]} />
           </div>
           <div className="relative overflow-hidden rounded-xl group">
-            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt="English breakfast" src="https://images.unsplash.com/photo-1533920379810-6bed1640a959?w=600&q=80" />
+            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={`${property.name} photo`} src={galleryImages[2]} />
           </div>
           <div className="md:col-span-2 relative overflow-hidden rounded-xl group">
-            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt="Cotswold countryside" src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1200&q=80" />
+            <img className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={`${property.name} photo`} src={galleryImages[3]} />
           </div>
         </section>
 
@@ -118,6 +131,16 @@ export default async function PropertyPage({
                 {property.short_description || "A Sanctuary for the Discerning Walker"}
               </h2>
               <p className="text-lg text-on-surface-variant leading-relaxed">{property.description}</p>
+              {property.booking?.description && (
+                <details className="mt-6">
+                  <summary className="text-sm font-bold text-tertiary cursor-pointer hover:underline">
+                    More from Booking.com
+                  </summary>
+                  <p className="mt-3 text-sm text-on-surface-variant leading-relaxed">
+                    {property.booking.description}
+                  </p>
+                </details>
+              )}
             </section>
 
             {/* Walker Logistics + Map */}
@@ -175,127 +198,38 @@ export default async function PropertyPage({
             </section>
 
             {/* Reviews */}
-            <section>
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="font-headline text-3xl font-bold text-primary">What Other Walkers Say</h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {SAMPLE_REVIEWS.map((review) => (
-                  <div key={review.id} className="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
-                    <div className="flex items-center gap-1 text-tertiary mb-3">
-                      {Array.from({ length: review.rating }).map((_, i) => (
-                        <span key={i} className="material-symbols-outlined text-sm filled">star</span>
-                      ))}
-                    </div>
-                    <p className="font-bold text-primary mb-2">&ldquo;{review.title}&rdquo;</p>
-                    <p className="text-on-surface-variant text-sm mb-4">&ldquo;{review.body}&rdquo;</p>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center text-xs font-bold text-on-secondary-fixed">
-                        {review.guest_initials}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-primary">
-                          {review.guest_name.split(" ")[0]} {review.guest_name.split(" ").pop()?.charAt(0)}.
-                        </p>
-                        <p className="text-[10px] text-secondary">Walked {review.walked_date}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+            <BookingReviews
+              slug={slug}
+              bookingHotelId={bookingHotelId}
+              curatedRating={property.rating}
+              curatedReviewCount={property.review_count}
+            />
           </div>
 
           {/* Booking Widget */}
           <aside className="lg:col-span-4">
-            <div className="sticky top-32">
-              <div className="bg-white rounded-2xl shadow-[0_24px_48px_-12px_rgba(28,28,25,0.1)] p-8 border border-outline-variant/20">
-                <div className="flex items-baseline gap-2 mb-6">
-                  <span className="text-3xl font-bold text-primary">&pound;{price}</span>
-                  <span className="text-secondary font-medium">/ night</span>
-                </div>
-                <div className="space-y-4 mb-8">
-                  <div className="grid grid-cols-2 border border-outline-variant/30 rounded-lg overflow-hidden">
-                    <div className="p-3 border-r border-outline-variant/30 hover:bg-surface-container-low cursor-pointer">
-                      <label className="block text-[10px] uppercase font-bold text-secondary tracking-wider mb-1">Check-in</label>
-                      <span className="text-sm font-semibold">Select date</span>
-                    </div>
-                    <div className="p-3 hover:bg-surface-container-low cursor-pointer">
-                      <label className="block text-[10px] uppercase font-bold text-secondary tracking-wider mb-1">Check-out</label>
-                      <span className="text-sm font-semibold">Select date</span>
-                    </div>
-                  </div>
-                  <div className="p-3 border border-outline-variant/30 rounded-lg hover:bg-surface-container-low cursor-pointer">
-                    <label className="block text-[10px] uppercase font-bold text-secondary tracking-wider mb-1">Occupancy</label>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">2 Walkers, 1 Room</span>
-                      <span className="material-symbols-outlined text-secondary">expand_more</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-3 mb-8">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-secondary">&pound;{price} x 1 night</span>
-                    <span className="font-bold">&pound;{price}</span>
-                  </div>
-                  <div className="pt-3 border-t border-outline-variant/30 flex justify-between">
-                    <span className="font-bold text-primary">Total</span>
-                    <span className="font-bold text-primary">&pound;{price}</span>
-                  </div>
-                </div>
-                {property.website_url ? (
-                  <a href={property.website_url} target="_blank" rel="noopener noreferrer"
-                     className="block w-full bg-tertiary text-on-tertiary py-4 rounded-xl font-bold text-lg hover:bg-tertiary-container shadow-lg shadow-tertiary/20 active:scale-[0.98] transition-all mb-4 text-center">
-                    Book Direct
-                    <span className="material-symbols-outlined text-base ml-2 align-middle">open_in_new</span>
-                  </a>
-                ) : (
-                  <button className="w-full bg-tertiary text-on-tertiary py-4 rounded-xl font-bold text-lg hover:bg-tertiary-container shadow-lg shadow-tertiary/20 active:scale-[0.98] transition-all mb-4">
-                    Reserve Room
-                  </button>
-                )}
-                <p className="text-center text-xs text-secondary">
-                  {property.website_url ? "You'll be redirected to the property's own site" : "You won't be charged yet"}
-                </p>
-                {property.has_taxi_service && (
-                  <div className="mt-8 pt-8 border-t border-outline-variant/30">
-                    <h4 className="font-bold text-primary mb-4 text-sm">Getting There</h4>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="material-symbols-outlined text-secondary">directions_car</span>
-                        <span className="text-xs text-on-surface-variant font-medium">Nearby Taxi Dispatch</span>
-                      </div>
-                      <span className="material-symbols-outlined text-primary text-sm filled">check_circle</span>
-                    </div>
-                  </div>
-                )}
-              </div>
+            <BookingWidget
+              slug={slug}
+              bookingHotelId={bookingHotelId}
+              staticPrice={price}
+              propertyName={property.name}
+              propertyType={property.property_type}
+              websiteUrl={property.website_url}
+              hasTaxiService={property.has_taxi_service}
+              hostName={property.host_name}
+              hostDescription={property.host_description}
+            />
 
-              {/* Host Card */}
-              <div className="mt-6 flex items-center gap-4 p-4 bg-surface-container-low rounded-xl">
-                <div className="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center">
-                  <span className="material-symbols-outlined text-secondary">person</span>
-                </div>
-                <div>
-                  <p className="text-xs text-secondary font-bold uppercase tracking-wider">Your Host</p>
-                  <p className="text-sm font-bold text-primary">{property.host_name}</p>
-                  {property.host_description && (
-                    <p className="text-[10px] text-secondary">{property.host_description}</p>
-                  )}
-                </div>
+            {/* Trail Explorer CTA */}
+            <Link href="/explore"
+                  className="mt-4 flex items-center gap-3 p-4 bg-primary rounded-xl hover:bg-primary/90 transition-all">
+              <span className="material-symbols-outlined text-white">explore</span>
+              <div>
+                <p className="text-xs font-bold text-white">Trail Explorer</p>
+                <p className="text-[10px] text-white/60">Pubs, water & amenities nearby</p>
               </div>
-
-              {/* Trail Explorer CTA */}
-              <Link href="/explore"
-                    className="mt-4 flex items-center gap-3 p-4 bg-primary rounded-xl hover:bg-primary/90 transition-all">
-                <span className="material-symbols-outlined text-white">explore</span>
-                <div>
-                  <p className="text-xs font-bold text-white">Trail Explorer</p>
-                  <p className="text-[10px] text-white/60">Pubs, water & amenities nearby</p>
-                </div>
-                <span className="material-symbols-outlined text-white/40 text-sm ml-auto">arrow_forward</span>
-              </Link>
-            </div>
+              <span className="material-symbols-outlined text-white/40 text-sm ml-auto">arrow_forward</span>
+            </Link>
           </aside>
         </div>
       </main>

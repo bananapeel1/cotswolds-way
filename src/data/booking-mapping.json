@@ -1,0 +1,16 @@
+{
+  "the-lygon-arms": { "bookingHotelId": null, "enabled": false },
+  "holly-house-bnb": { "bookingHotelId": null, "enabled": false },
+  "the-noel-arms": { "bookingHotelId": null, "enabled": false },
+  "the-white-hart-winchcombe": { "bookingHotelId": null, "enabled": false },
+  "westward-house": { "bookingHotelId": null, "enabled": false },
+  "cleeve-hill-glamping": { "bookingHotelId": null, "enabled": false },
+  "the-painswick-hotel": { "bookingHotelId": null, "enabled": false },
+  "cardynham-house": { "bookingHotelId": null, "enabled": false },
+  "the-woolpack-inn-slad": { "bookingHotelId": null, "enabled": false },
+  "hunters-hall-inn": { "bookingHotelId": null, "enabled": false },
+  "the-swan-hotel-wotton": { "bookingHotelId": null, "enabled": false },
+  "the-royal-crescent-hotel": { "bookingHotelId": null, "enabled": false },
+  "brooks-guesthouse-bath": { "bookingHotelId": null, "enabled": false },
+  "old-sodbury-house": { "bookingHotelId": null, "enabled": false }
+}

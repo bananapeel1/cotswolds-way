@@ -1,10 +1,26 @@
 /**
- * Data layer — reads from static JSON files.
- * No database, no external dependencies, no latency.
+ * Data layer — reads from static JSON files, optionally enriched with
+ * Booking.com Demand API data (photos, reviews, live pricing).
+ *
  * To add/edit a property: update src/data/properties.json
+ * To link a property to Booking.com: update src/data/booking-mapping.json
  */
 
 import propertiesData from "@/data/properties.json";
+import bookingMappingData from "@/data/booking-mapping.json";
+import { getBookingDetails } from "./booking";
+import type { BookingMapping, BookingPhoto } from "./booking-types";
+
+const bookingMapping = bookingMappingData as Record<string, BookingMapping>;
+
+export type BookingEnrichment = {
+  hotelId: string;
+  photos: BookingPhoto[];
+  description: string;
+  amenities: string[];
+  reviewScore: number;
+  reviewCount: number;
+};
 
 export type Property = {
   id: string;
@@ -36,6 +52,7 @@ export type Property = {
   website_url: string | null;
   latitude: number;
   longitude: number;
+  booking?: BookingEnrichment | null;
 };
 
 const properties: Property[] = propertiesData as Property[];
@@ -79,6 +96,63 @@ export async function getPropertyReviews(_propertyId: string) {
 
 export async function getPropertiesWithCoordinates(): Promise<Property[]> {
   return properties.filter((p) => p.latitude && p.longitude);
+}
+
+// ─── Booking.com enrichment ─────────────────────────────────────────────────
+
+/** Check if a property has a Booking.com mapping */
+export function getBookingHotelId(slug: string): string | null {
+  const entry = bookingMapping[slug];
+  if (!entry?.enabled || !entry.bookingHotelId) return null;
+  return entry.bookingHotelId;
+}
+
+/** Enrich a single property with Booking.com static data (photos, reviews). */
+async function enrichProperty(property: Property): Promise<Property> {
+  const hotelId = getBookingHotelId(property.slug);
+  if (!hotelId) return { ...property, booking: null };
+
+  try {
+    const details = await getBookingDetails(hotelId);
+    if (!details) return { ...property, booking: null };
+
+    return {
+      ...property,
+      booking: {
+        hotelId,
+        photos: details.photos,
+        description: details.description,
+        amenities: details.amenities,
+        reviewScore: details.reviewScore,
+        reviewCount: details.reviewCount,
+      },
+    };
+  } catch {
+    return { ...property, booking: null };
+  }
+}
+
+/** Get a single enriched property by slug. */
+export async function getEnrichedPropertyBySlug(slug: string): Promise<Property | null> {
+  const property = properties.find((p) => p.slug === slug) ?? null;
+  if (!property) return null;
+  return enrichProperty(property);
+}
+
+/** Get filtered properties enriched with Booking.com data. */
+export async function getEnrichedProperties(filters?: {
+  maxDistance?: number;
+  dogFriendly?: boolean;
+  village?: string;
+  day?: number;
+}): Promise<Property[]> {
+  const base = await getProperties(filters);
+  // Enrich sequentially to respect Booking.com rate limits
+  const enriched: Property[] = [];
+  for (const p of base) {
+    enriched.push(await enrichProperty(p));
+  }
+  return enriched;
 }
 
 // ─── Trail segments ───────────────────────────────────────────────────────────

@@ -25,6 +25,7 @@ interface AccommodationCard {
   shortDescription?: string;
   isDogFriendly?: boolean;
   dayOnTrail?: number | null;
+  hasLiveAvailability?: boolean;
 }
 
 type PropertyTypeFilter =
@@ -389,19 +390,11 @@ export default function SearchLayout({
                     </div>
                   </div>
                   <div className="flex justify-between items-end border-t border-outline-variant/10 pt-4">
-                    <div>
-                      <p
-                        className={`text-[10px] ${acc.urgencyColor} font-bold mb-1 uppercase tracking-tighter`}
-                      >
-                        {acc.urgency}
-                      </p>
-                      <p className="text-2xl font-headline font-bold text-primary">
-                        &pound;{acc.price}
-                        <span className="text-sm font-body font-normal text-secondary">
-                          {acc.priceLabel}
-                        </span>
-                      </p>
-                    </div>
+                    <p
+                      className={`text-[10px] ${acc.urgencyColor} font-bold uppercase tracking-tighter`}
+                    >
+                      {acc.urgency}
+                    </p>
                     <span className="bg-primary text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-primary-container transition-colors">
                       View Stay
                     </span>
@@ -427,75 +420,64 @@ export default function SearchLayout({
         <TrailMap
           properties={filteredMapProperties}
           activeSlug={selectedSlug || undefined}
-          onMarkerClick={(slug) => setSelectedSlug(slug)}
+          onMarkerClick={(slug) => setSelectedSlug(prev => prev === slug ? null : slug)}
         />
 
-        {/* Property Preview Card (slides up from bottom when marker clicked) */}
+        {/* Property Preview Card */}
         {selectedProperty && selectedMapProp && (
           <div className="absolute bottom-6 left-6 right-6 z-30 animate-slide-up">
-            <div className="bg-white rounded-2xl shadow-2xl overflow-hidden border border-outline-variant/20">
+            <Link
+              href={`/property/${selectedProperty.slug}`}
+              className="block bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden border border-outline-variant/10 hover:shadow-[0_12px_40px_rgba(0,0,0,0.18)] transition-shadow"
+            >
               <button
-                onClick={() => setSelectedSlug(null)}
-                className="absolute top-3 right-3 z-10 w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center shadow-md hover:bg-white transition-colors"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedSlug(null); }}
+                className="absolute top-3 right-3 z-10 w-7 h-7 bg-white/95 backdrop-blur rounded-full flex items-center justify-center shadow-sm hover:bg-white transition-colors"
               >
-                <span className="material-symbols-outlined text-sm text-secondary">
-                  close
-                </span>
+                <span className="material-symbols-outlined text-xs text-secondary">close</span>
               </button>
               <div className="flex">
-                <div className="w-40 h-40 shrink-0 overflow-hidden">
+                <div className="w-32 sm:w-40 shrink-0 overflow-hidden">
                   <img
                     src={selectedProperty.image}
                     alt={selectedProperty.name}
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <div className="p-5 flex flex-col justify-between flex-grow min-w-0">
+                <div className="p-4 sm:p-5 flex flex-col justify-between flex-grow min-w-0">
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">
-                          {selectedProperty.typeIcon}
-                        </span>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="bg-primary/8 text-primary text-[10px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[10px]">{selectedProperty.typeIcon}</span>
                         {selectedProperty.typeLabel}
                       </span>
-                      <div className="flex items-center text-tertiary">
-                        <span className="material-symbols-outlined text-xs filled">
-                          star
-                        </span>
-                        <span className="text-xs font-bold ml-0.5">
-                          {selectedMapProp.rating}
-                        </span>
+                      <div className="flex items-center gap-0.5 text-tertiary">
+                        <span className="material-symbols-outlined text-xs filled">star</span>
+                        <span className="text-xs font-bold">{selectedMapProp.rating}</span>
                       </div>
                     </div>
-                    <h3 className="font-headline text-lg font-bold text-primary truncate">
+                    <h3 className="font-headline text-base sm:text-lg font-bold text-primary truncate leading-tight">
                       {selectedProperty.name}
                     </h3>
-                    <p className="text-xs text-secondary mt-0.5">
-                      {selectedMapProp.village} · Day{" "}
-                      {selectedMapProp.dayOnTrail}
+                    <p className="text-[11px] text-secondary mt-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[11px]">location_on</span>
+                      {selectedMapProp.village} · Day {selectedMapProp.dayOnTrail}
                     </p>
                   </div>
-                  <div className="flex items-end justify-between mt-3">
-                    <p className="text-xl font-headline font-bold text-primary">
-                      &pound;{selectedProperty.price}
-                      <span className="text-xs font-body font-normal text-secondary">
-                        {selectedProperty.priceLabel}
-                      </span>
-                    </p>
-                    <Link
-                      href={`/property/${selectedProperty.slug}`}
-                      className="bg-tertiary text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-tertiary-container transition-colors flex items-center gap-1"
-                    >
-                      View Details
-                      <span className="material-symbols-outlined text-sm">
-                        arrow_forward
-                      </span>
-                    </Link>
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-outline-variant/10">
+                    <div className="flex items-center gap-3">
+                      {selectedProperty.amenities.filter(a => a.active).slice(0, 3).map((a) => (
+                        <span key={a.icon} className="material-symbols-outlined text-secondary text-sm">{a.icon}</span>
+                      ))}
+                    </div>
+                    <span className="bg-tertiary text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                      View
+                      <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    </span>
                   </div>
                 </div>
               </div>
-            </div>
+            </Link>
           </div>
         )}
       </section>

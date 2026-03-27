@@ -152,7 +152,7 @@ export default function HomeMapPreview({
         const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
         const isHostel = p.propertyType === "hostel";
         const markerBg = isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#173124";
-        const markerIcon = isCamping ? "⛺ " : isHostel ? "🏠 " : "";
+        const markerIcon = isCamping ? "⛺" : isHostel ? "🏠" : "🏨";
 
         const el = document.createElement("div");
         el.style.cursor = "pointer";
@@ -160,16 +160,16 @@ export default function HomeMapPreview({
           <div style="
             background: ${markerBg};
             color: white;
-            padding: 3px 8px;
+            padding: 4px 10px;
             border-radius: 16px;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 700;
             font-family: 'Manrope', sans-serif;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
             border: 2px solid white;
             transition: transform 0.2s;
             white-space: nowrap;
-          ">${markerIcon}£${p.price}</div>
+          ">${markerIcon}</div>
         `;
 
         const popup = new mapboxgl.Popup({
@@ -179,7 +179,7 @@ export default function HomeMapPreview({
         }).setHTML(`
           <div style="font-family: 'Manrope', sans-serif; padding: 4px;">
             <p style="font-weight: 800; font-size: 13px; color: #173124; margin: 0 0 2px;">${p.name}</p>
-            <p style="font-size: 11px; color: #665d4e; margin: 0;">£${p.price}/night · ${p.village}</p>
+            <p style="font-size: 11px; color: #665d4e; margin: 0;">${p.village}</p>
           </div>
         `);
 
