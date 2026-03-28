@@ -20,9 +20,11 @@ interface AccommodationCard {
   urgencyColor: string;
   amenities: { icon: string; label: string; active: boolean }[];
   image: string;
-  shortDescription?: string;
   isDogFriendly?: boolean;
   dayOnTrail?: number | null;
+  trailStage?: number;
+  village?: string;
+  description?: string;
   hasLiveAvailability?: boolean;
 }
 
@@ -45,12 +47,16 @@ const PROPERTY_TYPE_OPTIONS: { value: PropertyTypeFilter; label: string }[] = [
   { value: "hostel", label: "Hostels" },
 ];
 
-const DAY_OPTIONS: { value: number | null; label: string }[] = [
-  { value: null, label: "Any" },
-  ...Array.from({ length: 10 }, (_, i) => ({
-    value: i + 1,
-    label: `Day ${i + 1}`,
-  })),
+const STAGE_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: "Full trail" },
+  { value: 1, label: "Stage 1: Chipping Campden to Stanton (16.5 km)" },
+  { value: 2, label: "Stage 2: Stanton to Cleeve Hill (22.4 km)" },
+  { value: 3, label: "Stage 3: Cleeve Hill to Birdlip (25.2 km)" },
+  { value: 4, label: "Stage 4: Birdlip to Painswick (11.2 km)" },
+  { value: 5, label: "Stage 5: Painswick to King's Stanley (15.4 km)" },
+  { value: 6, label: "Stage 6: King's Stanley to Wotton-under-Edge (19.9 km)" },
+  { value: 7, label: "Stage 7: Wotton-under-Edge to Tormarton (23.4 km)" },
+  { value: 8, label: "Stage 8: Tormarton to Bath (26.9 km)" },
 ];
 
 export default function SearchLayout({
@@ -66,20 +72,30 @@ export default function SearchLayout({
   // Filter state
   const [propertyType, setPropertyType] = useState<PropertyTypeFilter>(null);
   const [dogFriendly, setDogFriendly] = useState(false);
-  const [dayOnTrail, setDayOnTrail] = useState<number | null>(null);
-  const [dayOpen, setDayOpen] = useState(false);
+  const [stageFilter, setStageFilter] = useState<number | null>(null);
+  const [stageOpen, setStageOpen] = useState(false);
+
+  // Plan state
+  const [planSlugs, setPlanSlugs] = useState<string[]>([]);
+  const [planOpen, setPlanOpen] = useState(true);
+
+  const togglePlan = (slug: string) => {
+    setPlanSlugs((prev) =>
+      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
+    );
+  };
 
   // Count active filters
   const activeFilterCount = [
     propertyType !== null,
     dogFriendly,
-    dayOnTrail !== null,
+    stageFilter !== null,
   ].filter(Boolean).length;
 
   const clearFilters = () => {
     setPropertyType(null);
     setDogFriendly(false);
-    setDayOnTrail(null);
+    setStageFilter(null);
   };
 
   // Filter accommodations
@@ -87,10 +103,10 @@ export default function SearchLayout({
     return accommodations.filter((acc) => {
       if (propertyType && acc.propertyType !== propertyType) return false;
       if (dogFriendly && !acc.isDogFriendly) return false;
-      if (dayOnTrail && acc.dayOnTrail !== dayOnTrail) return false;
+      if (stageFilter && acc.trailStage !== stageFilter) return false;
       return true;
     });
-  }, [accommodations, propertyType, dogFriendly, dayOnTrail]);
+  }, [accommodations, propertyType, dogFriendly, stageFilter]);
 
   // Filter map properties to match
   const filteredSlugs = useMemo(
@@ -100,6 +116,12 @@ export default function SearchLayout({
   const filteredMapProperties = useMemo(
     () => mapProperties.filter((p) => filteredSlugs.has(p.slug)),
     [mapProperties, filteredSlugs]
+  );
+
+  // Plan items in trail order
+  const planItems = useMemo(
+    () => accommodations.filter((a) => planSlugs.includes(a.slug)).sort((a, b) => (a.trailStage || 0) - (b.trailStage || 0)),
+    [accommodations, planSlugs]
   );
 
   const selectedProperty = selectedSlug
@@ -145,13 +167,51 @@ export default function SearchLayout({
       >
         {/* Filter Bar */}
         <div className="bg-surface px-4 sm:px-8 pt-6 sm:pt-8 pb-4 z-20">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="font-headline text-3xl font-bold tracking-tight text-primary">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-headline text-2xl font-bold tracking-tight text-primary">
               Accommodations
             </h2>
             <span className="text-sm font-label text-secondary">
-              {filtered.length} properties found
+              {filtered.length} found
             </span>
+          </div>
+
+          {/* Stage selector */}
+          <div className="relative mb-4">
+            <button
+              onClick={() => setStageOpen(!stageOpen)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-surface-container-low rounded-xl border border-outline-variant/20 text-sm font-body text-primary"
+            >
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-base text-secondary">route</span>
+                {stageFilter
+                  ? STAGE_OPTIONS.find((o) => o.value === stageFilter)?.label
+                  : "Full trail"}
+              </div>
+              <span className={`material-symbols-outlined text-sm text-secondary transition-transform ${stageOpen ? "rotate-180" : ""}`}>
+                keyboard_arrow_down
+              </span>
+            </button>
+            {stageOpen && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant/20 py-1 z-30 max-h-80 overflow-y-auto">
+                {STAGE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.label}
+                    onClick={() => {
+                      setStageFilter(opt.value);
+                      setStageOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 text-sm font-body hover:bg-surface-container-high transition-colors ${
+                      stageFilter === opt.value
+                        ? "text-primary font-bold bg-primary-fixed/30"
+                        : "text-secondary"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Property Type Pills */}
@@ -171,9 +231,8 @@ export default function SearchLayout({
             ))}
           </div>
 
-          {/* Second row: Budget, Dog-friendly, Day on Trail, Clear */}
+          {/* Second row: Dog-friendly, Clear */}
           <div className="flex gap-2 items-center overflow-x-auto pb-3 no-scrollbar">
-            {/* Dog-friendly toggle */}
             <button
               onClick={() => setDogFriendly(!dogFriendly)}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
@@ -186,46 +245,6 @@ export default function SearchLayout({
               Dog-friendly
             </button>
 
-            {/* Day on Trail dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setDayOpen(!dayOpen);
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
-                  dayOnTrail !== null
-                    ? "bg-secondary-container text-on-secondary-container"
-                    : "bg-surface-container-high text-on-surface-variant hover:bg-secondary-container/50"
-                }`}
-              >
-                {dayOnTrail ? `Day ${dayOnTrail}` : "Day on Trail"}
-                <span className="material-symbols-outlined text-sm">
-                  keyboard_arrow_down
-                </span>
-              </button>
-              {dayOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-surface-container-lowest rounded-lg shadow-lg border border-outline-variant/20 py-1 z-30 min-w-[120px] max-h-60 overflow-y-auto">
-                  {DAY_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.label}
-                      onClick={() => {
-                        setDayOnTrail(opt.value);
-                        setDayOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-xs font-body hover:bg-surface-container-high transition-colors ${
-                        dayOnTrail === opt.value
-                          ? "text-primary font-bold"
-                          : "text-secondary"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Active filter count + Clear */}
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
@@ -236,12 +255,54 @@ export default function SearchLayout({
               </button>
             )}
           </div>
-
-          <div className="h-px w-full bg-outline-variant/20 mt-2" />
         </div>
 
+        {/* My Plan Panel */}
+        {planSlugs.length > 0 && (
+          <div className="mx-4 sm:mx-8 mb-4 bg-primary-fixed/20 rounded-xl border border-primary/10 overflow-hidden">
+            <button
+              onClick={() => setPlanOpen(!planOpen)}
+              className="w-full flex items-center justify-between px-4 py-3"
+            >
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-base text-primary">checklist</span>
+                <span className="text-sm font-bold text-primary">My Plan ({planSlugs.length})</span>
+              </div>
+              <span className={`material-symbols-outlined text-sm text-primary transition-transform ${planOpen ? "rotate-180" : ""}`}>
+                keyboard_arrow_down
+              </span>
+            </button>
+            {planOpen && (
+              <div className="px-4 pb-3 space-y-2">
+                {planItems.map((item) => (
+                  <div key={item.slug} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-primary font-bold text-xs shrink-0">S{item.trailStage}</span>
+                      <span className="text-primary truncate">{item.name}</span>
+                    </div>
+                    <button
+                      onClick={() => togglePlan(item.slug)}
+                      className="text-secondary hover:text-red-500 transition-colors shrink-0 ml-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">close</span>
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setPlanSlugs([])}
+                  className="text-xs text-secondary hover:text-primary transition-colors mt-1"
+                >
+                  Clear plan
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="h-px mx-4 sm:mx-8 bg-outline-variant/20" />
+
         {/* Accommodation Cards */}
-        <div className="px-4 sm:px-8 pb-12 space-y-4 sm:space-y-6 overflow-y-auto no-scrollbar flex-grow">
+        <div className="px-4 sm:px-8 pb-12 space-y-4 sm:space-y-6 overflow-y-auto no-scrollbar flex-grow pt-4">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <span className="material-symbols-outlined text-5xl text-secondary/30 mb-4">
@@ -256,95 +317,86 @@ export default function SearchLayout({
               </p>
               <button
                 onClick={clearFilters}
-                className="flex items-center gap-2 bg-tertiary text-on-tertiary px-5 py-2.5 rounded-lg font-label text-xs font-bold uppercase tracking-widest hover:bg-tertiary-container transition-all"
+                className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-full font-label text-xs font-bold hover:bg-primary-container transition-all"
               >
-                <span className="material-symbols-outlined text-sm">
-                  filter_alt_off
-                </span>
+                <span className="material-symbols-outlined text-sm">filter_alt_off</span>
                 Clear All Filters
               </button>
             </div>
           ) : (
             filtered.map((acc) => (
-              <Link
-                href={`/property/${acc.slug}`}
+              <div
                 key={acc.slug}
-                className={`bg-surface-container-lowest rounded-2xl overflow-hidden flex flex-col sm:flex-row shadow-sm hover:shadow-md transition-shadow group border block ${
+                className={`bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow group border ${
                   selectedSlug === acc.slug
-                    ? "border-tertiary ring-2 ring-tertiary/20"
-                    : "border-outline-variant/10"
+                    ? "border-primary ring-2 ring-primary/20"
+                    : planSlugs.includes(acc.slug)
+                      ? "border-primary/40"
+                      : "border-outline-variant/10"
                 }`}
               >
-                <div className="w-full sm:w-48 h-48 relative shrink-0 overflow-hidden">
-                  <img
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    alt={acc.name}
-                    src={acc.image}
-                  />
-                  <div className="absolute top-2 left-2 bg-primary/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
-                    <span className="material-symbols-outlined text-xs">
-                      {acc.typeIcon}
-                    </span>
-                    {acc.typeLabel}
+                <Link
+                  href={`/property/${acc.slug}`}
+                  className="flex flex-col sm:flex-row"
+                >
+                  <div className="w-full sm:w-48 h-48 relative shrink-0 overflow-hidden">
+                    <img
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      alt={acc.name}
+                      src={acc.image}
+                    />
+                    <div className="absolute top-2 left-2 bg-primary/80 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs">
+                        {acc.typeIcon}
+                      </span>
+                      {acc.typeLabel}
+                    </div>
                   </div>
-                </div>
-                <div className="p-6 flex flex-col justify-between flex-grow">
-                  <div>
-                    <div className="flex justify-between items-start mb-1">
-                      <h4 className="font-headline text-xl font-bold text-primary">
+                  <div className="p-5 flex flex-col justify-between flex-grow">
+                    <div>
+                      <h4 className="font-headline text-lg font-bold text-primary mb-1">
                         {acc.name}
                       </h4>
-                      {acc.rating && (
-                        <div className="flex items-center text-tertiary">
-                          <span className="material-symbols-outlined text-sm filled">
-                            star
-                          </span>
-                          <span className="text-sm font-bold ml-1">
-                            {acc.rating}
-                          </span>
-                        </div>
+                      <p className="text-xs text-secondary mb-2 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">location_on</span>
+                        {acc.village || acc.urgency}
+                        {acc.trailStage && <span className="ml-1">· Stage {acc.trailStage}</span>}
+                      </p>
+                      {acc.description && (
+                        <p className="text-xs text-secondary/80 line-clamp-2 mb-3">{acc.description}</p>
                       )}
                     </div>
-                    <p className="text-[10px] font-label text-secondary uppercase tracking-widest font-bold mb-4 flex items-center gap-2">
-                      <span className="material-symbols-outlined text-xs">
-                        {acc.distanceIcon}
-                      </span>
-                      {acc.distance}
-                    </p>
-                    <div className="flex gap-4 mb-4">
-                      {acc.amenities.map((amenity) => (
-                        <div
-                          key={amenity.icon}
-                          className="group/icon relative cursor-help"
-                        >
-                          <span
-                            className={`material-symbols-outlined text-secondary ${
-                              !amenity.active
-                                ? "opacity-30"
-                                : "hover:text-primary"
-                            } transition-colors`}
-                          >
+                    <div className="flex justify-between items-center pt-3 border-t border-outline-variant/10">
+                      <div className="flex items-center gap-3">
+                        {acc.amenities.filter(a => a.active).slice(0, 3).map((amenity) => (
+                          <span key={amenity.icon} className="material-symbols-outlined text-secondary text-sm">
                             {amenity.icon}
                           </span>
-                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/icon:block bg-primary text-white text-[10px] px-2 py-1 rounded whitespace-nowrap">
-                            {amenity.label}
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                      <span className="bg-primary text-white px-4 py-1.5 rounded-full text-xs font-bold">
+                        View Stay
+                      </span>
                     </div>
                   </div>
-                  <div className="flex justify-between items-end border-t border-outline-variant/10 pt-4">
-                    <p
-                      className={`text-[10px] ${acc.urgencyColor} font-bold uppercase tracking-tighter`}
-                    >
-                      {acc.urgency}
-                    </p>
-                    <span className="bg-primary text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-primary-container transition-colors">
-                      View Stay
+                </Link>
+                {/* Add to plan button */}
+                <div className="px-5 pb-4 -mt-1">
+                  <button
+                    onClick={(e) => { e.preventDefault(); togglePlan(acc.slug); }}
+                    className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-colors ${
+                      planSlugs.includes(acc.slug)
+                        ? "bg-primary/10 text-primary"
+                        : "bg-surface-container-high text-secondary hover:bg-primary/5 hover:text-primary"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-sm">
+                      {planSlugs.includes(acc.slug) ? "check_circle" : "add_circle_outline"}
                     </span>
-                  </div>
+                    {planSlugs.includes(acc.slug) ? "In your plan" : "Add to plan"}
+                  </button>
                 </div>
-              </Link>
+              </div>
             ))
           )}
         </div>
@@ -370,12 +422,9 @@ export default function SearchLayout({
         {/* Property Preview Card */}
         {selectedProperty && selectedMapProp && (
           <div className="absolute bottom-6 left-6 right-6 z-30 animate-slide-up">
-            <Link
-              href={`/property/${selectedProperty.slug}`}
-              className="block bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden border border-outline-variant/10 hover:shadow-[0_12px_40px_rgba(0,0,0,0.18)] transition-shadow"
-            >
+            <div className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden border border-outline-variant/10">
               <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSelectedSlug(null); }}
+                onClick={() => setSelectedSlug(null)}
                 className="absolute top-3 right-3 z-10 w-7 h-7 bg-white/95 backdrop-blur rounded-full flex items-center justify-center shadow-sm hover:bg-white transition-colors"
               >
                 <span className="material-symbols-outlined text-xs text-secondary">close</span>
@@ -395,35 +444,38 @@ export default function SearchLayout({
                         <span className="material-symbols-outlined text-[10px]">{selectedProperty.typeIcon}</span>
                         {selectedProperty.typeLabel}
                       </span>
-                      {selectedMapProp.rating && (
-                        <div className="flex items-center gap-0.5 text-tertiary">
-                          <span className="material-symbols-outlined text-xs filled">star</span>
-                          <span className="text-xs font-bold">{selectedMapProp.rating}</span>
-                        </div>
-                      )}
                     </div>
                     <h3 className="font-headline text-base sm:text-lg font-bold text-primary truncate leading-tight">
                       {selectedProperty.name}
                     </h3>
                     <p className="text-[11px] text-secondary mt-1 flex items-center gap-1">
                       <span className="material-symbols-outlined text-[11px]">location_on</span>
-                      {selectedMapProp.village} · Day {selectedMapProp.dayOnTrail}
+                      {selectedMapProp.village} · Stage {selectedProperty.trailStage}
                     </p>
                   </div>
                   <div className="flex items-center justify-between mt-3 pt-3 border-t border-outline-variant/10">
-                    <div className="flex items-center gap-3">
-                      {selectedProperty.amenities.filter(a => a.active).slice(0, 3).map((a) => (
-                        <span key={a.icon} className="material-symbols-outlined text-secondary text-sm">{a.icon}</span>
-                      ))}
-                    </div>
-                    <span className="bg-tertiary text-white px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); togglePlan(selectedProperty.slug); }}
+                      className={`text-xs font-bold flex items-center gap-1 ${
+                        planSlugs.includes(selectedProperty.slug) ? "text-primary" : "text-secondary hover:text-primary"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        {planSlugs.includes(selectedProperty.slug) ? "check_circle" : "add_circle_outline"}
+                      </span>
+                      {planSlugs.includes(selectedProperty.slug) ? "In plan" : "Add to plan"}
+                    </button>
+                    <Link
+                      href={`/property/${selectedProperty.slug}`}
+                      className="bg-primary text-white px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1"
+                    >
                       View
                       <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                    </span>
+                    </Link>
                   </div>
                 </div>
               </div>
-            </Link>
+            </div>
           </div>
         )}
       </section>

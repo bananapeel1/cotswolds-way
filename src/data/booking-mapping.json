@@ -1,29 +1,290 @@
 {
-  "the-lygon-arms": { "bookingHotelId": null, "enabled": false },
-  "holly-house-bnb": { "bookingHotelId": null, "enabled": false },
-  "the-noel-arms": { "bookingHotelId": null, "enabled": false },
-  "the-white-hart-winchcombe": { "bookingHotelId": null, "enabled": false },
-  "westward-house": { "bookingHotelId": null, "enabled": false },
-  "cleeve-hill-glamping": { "bookingHotelId": null, "enabled": false },
-  "the-painswick-hotel": { "bookingHotelId": null, "enabled": false },
-  "cardynham-house": { "bookingHotelId": null, "enabled": false },
-  "the-woolpack-inn-slad": { "bookingHotelId": null, "enabled": false },
-  "hunters-hall-inn": { "bookingHotelId": null, "enabled": false },
-  "the-swan-hotel-wotton": { "bookingHotelId": null, "enabled": false },
-  "the-royal-crescent-hotel": { "bookingHotelId": null, "enabled": false },
-  "brooks-guesthouse-bath": { "bookingHotelId": null, "enabled": false },
-  "old-sodbury-house": { "bookingHotelId": null, "enabled": false },
-  "the-broadway-hotel": { "bookingHotelId": null, "enabled": false },
-  "the-mount-inn-stanton": { "bookingHotelId": null, "enabled": false },
-  "the-rising-sun-cleeve-hill": { "bookingHotelId": null, "enabled": false },
-  "hotel-du-vin-cheltenham": { "bookingHotelId": null, "enabled": false },
-  "lonsdale-house-cheltenham": { "bookingHotelId": null, "enabled": false },
-  "the-royal-george-birdlip": { "bookingHotelId": null, "enabled": false },
-  "the-bear-of-rodborough": { "bookingHotelId": null, "enabled": false },
-  "egypt-mill-nailsworth": { "bookingHotelId": null, "enabled": false },
-  "the-old-crown-uley": { "bookingHotelId": null, "enabled": false },
-  "the-beaufort-arms-hawkesbury": { "bookingHotelId": null, "enabled": false },
-  "the-compass-inn-tormarton": { "bookingHotelId": null, "enabled": false },
-  "the-lord-nelson-marshfield": { "bookingHotelId": null, "enabled": false },
-  "the-queensberry-hotel-bath": { "bookingHotelId": null, "enabled": false }
+  "2-crescent-gardens-guest-house": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "8-holland-street-townhouse-at-23-brock-street": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "abbey-hotel-bath": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "abbots-grange": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "badger-towers": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "badgers-hall": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "bantam-tea-rooms": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "bath-backpackers": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "bath-ymca-hostel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "bathen-house-boutique-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "best-western-compass-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "broad-street-townhouse": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "central-studios-gloucester-place": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "citrus-hotel-cheltenham": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "cleeve-hill-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "cotswold-charm-george-barn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "cotswold-grange": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "cotswold-house-hotel-and-spa": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "coxhorne-glamping": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "croft-house-guest-suite": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "cross-hands-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "crown-inn-at-tolldown": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "crown-and-trumpet-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "dormy-house-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "dukes-bath": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "eight": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "eight-bells-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "ellenborough-park": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "forthay-bed-and-breakfast": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "francis-hotel-bath": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "george-apartments": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "greencourt-loft": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "harington-s-boutique-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "holiday-inn-express-bath-by-ihg": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "house-of-george-w-davies": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "lansdown-grove-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "laurel-house": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "london-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "noel-arms": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "number-17-bath": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "rising-sun-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "royal-george-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "russell-s": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "st-michaels-bistro": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "stables-at-the-black-horse-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "swan-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-ayrlington-guesthouse": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-bell-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-black-fox": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-black-horse-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-boathouse": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-broadway-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-falcon-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-fish-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-fox-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-griffin-inn-bath": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-hut-at-bay-tree-farm": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-kennard": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-lion-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-lygon-arms": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-painswick": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-queensberry-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-red-lion": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-roseate-villa-bath": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-white-hart-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-yard-in-bath-hotel": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "the-z-hotel-bath": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "toghill-house-farm": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "troy-house": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "volunteer-inn": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "woolmarket-house-hospitality-limited": {
+    "bookingHotelId": null,
+    "enabled": false
+  },
+  "zen-cottage": {
+    "bookingHotelId": null,
+    "enabled": false
+  }
 }

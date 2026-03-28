@@ -33,6 +33,7 @@ export type Property = {
   postcode: string;
   trail_distance_miles: number;
   trail_segment: string;
+  trail_stage: number;
   day_on_trail: number;
   price_per_night: number;
   rating: number | null;
@@ -64,6 +65,7 @@ export async function getProperties(filters?: {
   dogFriendly?: boolean;
   village?: string;
   day?: number;
+  stage?: number;
 }): Promise<Property[]> {
   let results = [...properties];
 
@@ -80,6 +82,9 @@ export async function getProperties(filters?: {
   }
   if (filters?.day) {
     results = results.filter((p) => p.day_on_trail === filters.day);
+  }
+  if (filters?.stage) {
+    results = results.filter((p) => p.trail_stage === filters.stage);
   }
 
   return results.sort((a, b) => a.trail_distance_miles - b.trail_distance_miles);

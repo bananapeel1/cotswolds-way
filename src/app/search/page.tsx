@@ -45,8 +45,11 @@ export default async function SearchPage({
       distanceIcon: hasTransfer ? "local_taxi" : "navigation",
       badge: null as string | null,
       badgeColor: "",
-      urgency: `${p.village} · Day ${p.day_on_trail}`,
+      urgency: `${p.village} · Stage ${p.trail_stage}`,
       urgencyColor: "text-secondary",
+      trailStage: p.trail_stage,
+      village: p.village,
+      description: p.short_description || p.description?.substring(0, 100) || '',
       amenities: [
         { icon: "dry_cleaning", label: "Boot dryer",   active: p.has_boot_dryer },
         { icon: "pets",         label: "Dog friendly", active: p.is_dog_friendly },

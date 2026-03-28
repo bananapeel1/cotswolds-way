@@ -1,0 +1,90 @@
+[
+  {
+    "stage": 1,
+    "from": "Chipping Campden",
+    "to": "Stanton",
+    "distance_km": 16.5,
+    "distance_miles": 10.3,
+    "from_lat": 52.0536,
+    "from_lng": -1.7798,
+    "to_lat": 52.024,
+    "to_lng": -1.885
+  },
+  {
+    "stage": 2,
+    "from": "Stanton",
+    "to": "Cleeve Hill",
+    "distance_km": 22.4,
+    "distance_miles": 13.9,
+    "from_lat": 52.024,
+    "from_lng": -1.885,
+    "to_lat": 51.94,
+    "to_lng": -2.025
+  },
+  {
+    "stage": 3,
+    "from": "Cleeve Hill",
+    "to": "Birdlip",
+    "distance_km": 25.2,
+    "distance_miles": 15.7,
+    "from_lat": 51.94,
+    "from_lng": -2.025,
+    "to_lat": 51.828,
+    "to_lng": -2.11
+  },
+  {
+    "stage": 4,
+    "from": "Birdlip",
+    "to": "Painswick",
+    "distance_km": 11.2,
+    "distance_miles": 7.0,
+    "from_lat": 51.828,
+    "from_lng": -2.11,
+    "to_lat": 51.789,
+    "to_lng": -2.197
+  },
+  {
+    "stage": 5,
+    "from": "Painswick",
+    "to": "King's Stanley",
+    "distance_km": 15.4,
+    "distance_miles": 9.6,
+    "from_lat": 51.789,
+    "from_lng": -2.197,
+    "to_lat": 51.728,
+    "to_lng": -2.276
+  },
+  {
+    "stage": 6,
+    "from": "King's Stanley",
+    "to": "Wotton-under-Edge",
+    "distance_km": 19.9,
+    "distance_miles": 12.4,
+    "from_lat": 51.728,
+    "from_lng": -2.276,
+    "to_lat": 51.637,
+    "to_lng": -2.354
+  },
+  {
+    "stage": 7,
+    "from": "Wotton-under-Edge",
+    "to": "Tormarton",
+    "distance_km": 23.4,
+    "distance_miles": 14.5,
+    "from_lat": 51.637,
+    "from_lng": -2.354,
+    "to_lat": 51.507,
+    "to_lng": -2.343
+  },
+  {
+    "stage": 8,
+    "from": "Tormarton",
+    "to": "Bath",
+    "distance_km": 26.9,
+    "distance_miles": 16.7,
+    "from_lat": 51.507,
+    "from_lng": -2.343,
+    "to_lat": 51.381,
+    "to_lng": -2.359
+  }
+]
