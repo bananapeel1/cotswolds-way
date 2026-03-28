@@ -37,12 +37,16 @@ export default function HomeMapPreview({
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapStyle, setMapStyle] = useState<"outdoors" | "satellite">("outdoors");
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-    if (!token) return;
+    if (!token) {
+      setError(true);
+      return;
+    }
 
     mapboxgl.accessToken = token;
 
@@ -66,6 +70,10 @@ export default function HomeMapPreview({
       new mapboxgl.AttributionControl({ compact: true }),
       "bottom-right"
     );
+
+    map.current.on("error", () => {
+      setError(true);
+    });
 
     map.current.on("load", () => {
       if (!map.current) return;
@@ -103,7 +111,7 @@ export default function HomeMapPreview({
         source: "trail",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#541600",
+          "line-color": "#154212",
           "line-width": 10,
           "line-opacity": 0.15,
         },
@@ -116,7 +124,7 @@ export default function HomeMapPreview({
         source: "trail",
         layout: { "line-join": "round", "line-cap": "round" },
         paint: {
-          "line-color": "#541600",
+          "line-color": "#154212",
           "line-width": 3.5,
           "line-dasharray": [3, 2],
         },
@@ -136,7 +144,7 @@ export default function HomeMapPreview({
             pointer-events: none;
             white-space: nowrap;
           ">
-            <div style="font-weight: 800; font-size: 11px; color: #173124;">${lm.name}</div>
+            <div style="font-weight: 800; font-size: 11px; color: #154212;">${lm.name}</div>
             <div style="font-size: 9px; color: #665d4e; font-weight: 600;">${lm.subtitle}</div>
           </div>
         `;
@@ -151,7 +159,7 @@ export default function HomeMapPreview({
 
         const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
         const isHostel = p.propertyType === "hostel";
-        const markerBg = isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#173124";
+        const markerBg = isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#154212";
         const markerIcon = isCamping ? "⛺" : isHostel ? "🏠" : "🏨";
 
         const el = document.createElement("div");
@@ -178,7 +186,7 @@ export default function HomeMapPreview({
           closeOnClick: false,
         }).setHTML(`
           <div style="font-family: 'Manrope', sans-serif; padding: 4px;">
-            <p style="font-weight: 800; font-size: 13px; color: #173124; margin: 0 0 2px;">${p.name}</p>
+            <p style="font-weight: 800; font-size: 13px; color: #154212; margin: 0 0 2px;">${p.name}</p>
             <p style="font-size: 11px; color: #665d4e; margin: 0;">${p.village}</p>
           </div>
         `);
@@ -220,6 +228,35 @@ export default function HomeMapPreview({
       map.current.setStyle(`mapbox://styles/mapbox/${next === "satellite" ? "satellite-streets" : "outdoors"}-v12`);
     }
   };
+
+  if (error) {
+    return (
+      <div className="relative w-full h-full rounded-[2rem] overflow-hidden shadow-xl border-4 border-white bg-surface-container-low">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+          <span className="material-symbols-outlined text-6xl text-primary/20 mb-4">map</span>
+          <h3 className="font-headline text-2xl font-bold text-primary mb-2">Interactive Trail Map</h3>
+          <p className="text-secondary text-sm mb-2 max-w-xs">
+            102 miles from Chipping Campden to Bath
+          </p>
+          <p className="text-secondary/60 text-xs mb-6">
+            {properties.length} verified stays along the trail
+          </p>
+          <div className="flex flex-wrap justify-center gap-2 mb-8">
+            {["Chipping Campden", "Broadway", "Winchcombe", "Cheltenham", "Painswick", "Stroud", "Dursley", "Bath"].map((v) => (
+              <span key={v} className="bg-surface-container-high text-primary text-xs font-bold px-3 py-1 rounded-full">{v}</span>
+            ))}
+          </div>
+          <a
+            href="/search"
+            className="bg-primary text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-primary-container transition-all inline-flex items-center gap-2"
+          >
+            Explore on Map
+            <span className="material-symbols-outlined text-sm">arrow_forward</span>
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full rounded-[2rem] overflow-hidden shadow-xl border-4 border-white">

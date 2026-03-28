@@ -102,13 +102,14 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Desktop right — Find a Stay CTA */}
+        {/* Desktop right — map icon */}
         <div className="hidden lg:flex items-center">
           <Link
             href="/search"
-            className="bg-primary text-white px-5 py-2 rounded-full font-bold text-sm hover:bg-primary-container transition-all"
+            className="w-10 h-10 flex items-center justify-center text-primary hover:text-primary/70 transition-colors"
+            aria-label="Map search"
           >
-            Find a Stay
+            <span className="material-symbols-outlined text-2xl">map</span>
           </Link>
         </div>
 
