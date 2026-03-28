@@ -1,19 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+const mainLinks = [
+  { href: "/", label: "Home", icon: "home" },
+  { href: "/search", label: "Explore Stays", icon: "map" },
+  { href: "/itinerary", label: "Itineraries", icon: "route" },
+  { href: "/plan", label: "Plan My Hike", icon: "hiking" },
+  { href: "/explore", label: "Trail Explorer", icon: "explore" },
+];
+
+const trailLinks = [
+  { href: "/maps", label: "Official Maps", icon: "travel_explore" },
+  { href: "/safety", label: "Safety Guide", icon: "health_and_safety" },
+  { href: "/weather", label: "Weather", icon: "cloud" },
+  { href: "/news", label: "Trail News", icon: "newspaper" },
+];
+
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [trailDropdownOpen, setTrailDropdownOpen] = useState(false);
   const pathname = usePathname();
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const navLinks = [
-    { href: "/", label: "Home" },
-    { href: "/search", label: "Explore" },
-    { href: "/itinerary", label: "Itineraries" },
-    { href: "/plan", label: "Plan" },
-  ];
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setTrailDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const isTrailPage = trailLinks.some((l) => pathname === l.href);
 
   return (
     <nav className="bg-surface/80 backdrop-blur-xl sticky top-0 z-50 border-b border-outline-variant/10">
@@ -23,40 +46,75 @@ export default function Navbar() {
           className="flex items-center gap-3 text-primary font-headline font-bold text-xl tracking-tight"
         >
           <img src="/logo.svg" alt="Logo" className="w-9 h-9" />
-          The Cotswold Way
+          <span className="hidden sm:inline">The Cotswold Way</span>
         </Link>
 
-        {/* Desktop nav — centered links */}
-        <div className="hidden md:flex items-center gap-8">
-          {navLinks.map((link) => (
+        {/* Desktop nav */}
+        <div className="hidden lg:flex items-center gap-6">
+          {mainLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`font-label text-base font-bold transition-colors ${
+              className={`font-label text-sm font-bold transition-colors flex items-center gap-1.5 ${
                 pathname === link.href
                   ? "text-primary"
                   : "text-[#5e5e5e] hover:text-primary"
               }`}
             >
+              <span className="material-symbols-outlined text-base">{link.icon}</span>
               {link.label}
             </Link>
           ))}
+
+          {/* The Trail dropdown */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setTrailDropdownOpen(!trailDropdownOpen)}
+              className={`font-label text-sm font-bold transition-colors flex items-center gap-1.5 ${
+                isTrailPage ? "text-primary" : "text-[#5e5e5e] hover:text-primary"
+              }`}
+            >
+              <span className="material-symbols-outlined text-base">terrain</span>
+              The Trail
+              <span className={`material-symbols-outlined text-sm transition-transform ${trailDropdownOpen ? "rotate-180" : ""}`}>
+                keyboard_arrow_down
+              </span>
+            </button>
+            {trailDropdownOpen && (
+              <div className="absolute top-full right-0 mt-2 bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant/10 py-2 min-w-[200px] z-50">
+                {trailLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setTrailDropdownOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 text-sm font-body hover:bg-surface-container-high transition-colors ${
+                      pathname === link.href
+                        ? "text-primary font-bold"
+                        : "text-secondary hover:text-primary"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-base">{link.icon}</span>
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Desktop right — map icon */}
-        <div className="hidden md:flex items-center">
+        {/* Desktop right — Find a Stay CTA */}
+        <div className="hidden lg:flex items-center">
           <Link
             href="/search"
-            className="w-10 h-10 flex items-center justify-center text-primary hover:text-primary/70 transition-colors"
-            aria-label="Map search"
+            className="bg-primary text-white px-5 py-2 rounded-full font-bold text-sm hover:bg-primary-container transition-all"
           >
-            <span className="material-symbols-outlined text-2xl">map</span>
+            Find a Stay
           </Link>
         </div>
 
         {/* Mobile hamburger */}
         <button
-          className="md:hidden flex items-center justify-center w-10 h-10 text-primary"
+          className="lg:hidden flex items-center justify-center w-10 h-10 text-primary"
           onClick={() => setMobileMenuOpen(true)}
           aria-label="Open menu"
         >
@@ -66,7 +124,7 @@ export default function Navbar() {
 
       {/* Mobile overlay menu */}
       <div
-        className={`fixed inset-0 z-[100] md:hidden transition-opacity duration-300 ${
+        className={`fixed inset-0 z-[100] lg:hidden transition-opacity duration-300 ${
           mobileMenuOpen
             ? "opacity-100 pointer-events-auto"
             : "opacity-0 pointer-events-none"
@@ -94,19 +152,16 @@ export default function Navbar() {
           </div>
 
           <div className="flex flex-col px-6 overflow-y-auto flex-1 min-h-0 py-2">
-            <MobileNavLink href="/" icon="home" label="Home" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/search" icon="map" label="Explore Stays" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/itinerary" icon="route" label="Itineraries" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/plan" icon="hiking" label="Plan My Hike" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/explore" icon="explore" label="Trail Explorer" onClick={() => setMobileMenuOpen(false)} />
+            {mainLinks.map((link) => (
+              <MobileNavLink key={link.href} href={link.href} icon={link.icon} label={link.label} onClick={() => setMobileMenuOpen(false)} />
+            ))}
 
             <div className="mt-5 mb-2">
               <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">The Trail</span>
             </div>
-            <MobileNavLink href="/maps" icon="travel_explore" label="Official Maps" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/safety" icon="health_and_safety" label="Safety Guide" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/weather" icon="cloud" label="Weather" onClick={() => setMobileMenuOpen(false)} />
-            <MobileNavLink href="/news" icon="newspaper" label="Trail News" onClick={() => setMobileMenuOpen(false)} />
+            {trailLinks.map((link) => (
+              <MobileNavLink key={link.href} href={link.href} icon={link.icon} label={link.label} onClick={() => setMobileMenuOpen(false)} />
+            ))}
           </div>
 
           <div className="flex flex-col gap-3 px-6 pb-10 pt-4 border-t border-outline-variant/20">
