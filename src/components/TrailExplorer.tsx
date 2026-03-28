@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
@@ -99,9 +99,15 @@ export default function TrailExplorer() {
 
   // ── Get active POI types ────────────────────────────────────────────────
 
-  const activeTypes = layers.filter((l) => l.enabled).flatMap((l) => l.types);
+  const activeTypes = useMemo(
+    () => layers.filter((l) => l.enabled).flatMap((l) => l.types),
+    [layers]
+  );
 
-  const visiblePois = pois.filter((p) => activeTypes.includes(p.type));
+  const visiblePois = useMemo(
+    () => pois.filter((p) => activeTypes.includes(p.type)),
+    [pois, activeTypes]
+  );
 
   // ── Update nearest POIs when location changes ──────────────────────────
 
