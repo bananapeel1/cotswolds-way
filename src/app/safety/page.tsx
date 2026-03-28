@@ -117,7 +117,7 @@ export default function SafetyPage() {
             {[
               { icon: "fence", title: "Gates & Stiles", desc: "Always close gates behind you, even if you found them open. Farmland relies on gates to keep livestock contained. Use stiles where provided rather than climbing fences." },
               { icon: "pets", title: "Livestock Awareness", desc: "Keep dogs on leads near livestock, especially during lambing season (March-May). If cattle approach aggressively, release your dog and move away calmly. Never position yourself between a cow and her calf." },
-              { icon: "directions_walk", title: "Right of Way", desc: "The Cotswold Way follows public rights of way. Stick to the marked path, especially through farmland. You have a right to pass through, but not to leave litter, pick crops, or disturb wildlife." },
+              { icon: "directions_walk", title: "Right of Way", desc: "The Cotswolds Way follows public rights of way. Stick to the marked path, especially through farmland. You have a right to pass through, but not to leave litter, pick crops, or disturb wildlife." },
               { icon: "delete", title: "Leave No Trace", desc: "Carry out all litter, including biodegradable waste like fruit peel. Use designated facilities where available. Wild camping is not permitted along most of the trail without landowner permission." },
             ].map((item) => (
               <div key={item.title} className="flex gap-5">
@@ -137,7 +137,7 @@ export default function SafetyPage() {
         <div className="max-w-5xl mx-auto">
           <h2 className="font-headline text-3xl font-bold text-primary mb-8">Water Points &amp; Refill Stations</h2>
           <p className="font-body text-secondary mb-8 max-w-2xl leading-relaxed">
-            The Cotswold Way passes through numerous villages with shops, pubs, and cafes where you can refill water bottles. However, some stretches between settlements are long. Plan ahead.
+            The Cotswolds Way passes through numerous villages with shops, pubs, and cafes where you can refill water bottles. However, some stretches between settlements are long. Plan ahead.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {[

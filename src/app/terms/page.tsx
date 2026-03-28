@@ -4,9 +4,9 @@ import Footer from "@/components/Footer";
 const SECTIONS = [
   {
     title: "1. About These Terms",
-    content: `These terms and conditions govern your use of The Cotswold Way website and booking platform. By using our services, you agree to be bound by these terms. If you do not agree, please do not use our services.
+    content: `These terms and conditions govern your use of The Cotswolds Way website and booking platform. By using our services, you agree to be bound by these terms. If you do not agree, please do not use our services.
 
-"The Cotswold Way", "we", "our", and "us" refer to The Cotswold Way Ltd. "You" and "your" refer to the user of our services.`,
+"The Cotswolds Way", "we", "our", and "us" refer to The Cotswolds Way Ltd. "You" and "your" refer to the user of our services.`,
   },
   {
     title: "2. Our Services",
@@ -89,7 +89,7 @@ Nothing in these terms limits our liability for death or personal injury caused 
     content: `For questions about these terms, contact us at:
 
 Email: legal@cotswoldway.com
-Address: The Cotswold Way Ltd, Bath, United Kingdom`,
+Address: The Cotswolds Way Ltd, Bath, United Kingdom`,
   },
 ];
 
@@ -105,7 +105,7 @@ export default function TermsPage() {
             Terms &amp; Conditions
           </h1>
           <p className="font-body text-lg text-primary-fixed max-w-2xl mx-auto leading-relaxed">
-            The terms governing your use of The Cotswold Way platform.
+            The terms governing your use of The Cotswolds Way platform.
           </p>
         </div>
       </section>

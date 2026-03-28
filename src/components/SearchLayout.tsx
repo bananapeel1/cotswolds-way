@@ -419,10 +419,10 @@ export default function SearchLayout({
           onMarkerClick={(slug) => setSelectedSlug(prev => prev === slug ? null : slug)}
         />
 
-        {/* Property Preview Card */}
+        {/* Property Preview Card — centered overlay */}
         {selectedProperty && selectedMapProp && (
-          <div className="absolute bottom-6 left-6 right-6 z-30 animate-slide-up">
-            <div className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] overflow-hidden border border-outline-variant/10">
+          <div className="absolute inset-0 z-30 flex items-center justify-center p-6 pointer-events-none">
+            <div className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.18)] overflow-hidden border border-outline-variant/10 max-w-sm w-full pointer-events-auto animate-slide-up">
               <button
                 onClick={() => setSelectedSlug(null)}
                 className="absolute top-3 right-3 z-10 w-7 h-7 bg-white/95 backdrop-blur rounded-full flex items-center justify-center shadow-sm hover:bg-white transition-colors"

@@ -313,7 +313,7 @@ export default async function Home() {
               format_quote
             </span>
             <p className="font-headline text-2xl text-primary italic leading-relaxed mb-6">
-              &ldquo;The Cotswold Way was the first trek I&apos;ve done where
+              &ldquo;The Cotswolds Way was the first trek I&apos;ve done where
               the booking was as relaxing as the walk itself. Everything was
               seamless.&rdquo;
             </p>

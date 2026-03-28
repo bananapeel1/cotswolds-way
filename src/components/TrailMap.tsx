@@ -76,7 +76,7 @@ export default function TrailMap({
           "line-cap": "round",
         },
         paint: {
-          "line-color": "#541600",
+          "line-color": "#154212",
           "line-width": 8,
           "line-opacity": 0.15,
         },
@@ -92,7 +92,7 @@ export default function TrailMap({
           "line-cap": "round",
         },
         paint: {
-          "line-color": "#541600",
+          "line-color": "#154212",
           "line-width": 3,
           "line-dasharray": [3, 2],
         },
@@ -121,7 +121,7 @@ export default function TrailMap({
       const isActive = p.slug === activeSlug;
       const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
       const isHostel = p.propertyType === "hostel";
-      const markerBg = isActive ? "#541600" : isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#173124";
+      const markerBg = isActive ? "#154212" : isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#154212";
       const markerIcon = isCamping ? "⛺" : isHostel ? "🏠" : "🏨";
 
       // Create custom marker element
@@ -146,39 +146,20 @@ export default function TrailMap({
         ">${markerIcon}</div>
       `;
 
-      // Create popup for hover (not click)
-      const popup = new mapboxgl.Popup({
-        offset: 25,
-        closeButton: false,
-        closeOnClick: false,
-        className: "trail-map-popup",
-      }).setHTML(`
-        <div style="font-family: 'Manrope', sans-serif; padding: 6px 4px;">
-          <p style="font-weight: 800; font-size: 13px; color: #173124; margin: 0 0 3px;">
-            ${p.name}
-          </p>
-          <p style="font-size: 11px; color: #665d4e; margin: 0;">
-            ${p.village} · Day ${p.dayOnTrail}${p.rating ? ` · <span style="color: #541600;">★ ${p.rating}</span>` : ''}
-          </p>
-        </div>
-      `);
-
-      // Show popup on hover, hide on leave
+      // Hover scale effect only (no popup)
       const innerDiv = el.querySelector("div") as HTMLDivElement;
       el.addEventListener("mouseenter", () => {
         if (innerDiv) innerDiv.style.transform = "scale(1.15)";
         el.style.zIndex = "10";
-        popup.setLngLat([p.longitude, p.latitude]).addTo(map.current!);
       });
       el.addEventListener("mouseleave", () => {
         if (!isActive && innerDiv) {
           innerDiv.style.transform = "scale(1)";
         }
         el.style.zIndex = "1";
-        popup.remove();
       });
 
-      // Click navigates to property page (or calls onMarkerClick)
+      // Click triggers onMarkerClick (popup handled by parent)
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         if (onMarkerClick) {

@@ -79,7 +79,7 @@ To exercise these rights, contact us at privacy@cotswoldway.com. We will respond
     content: `If you have questions about this privacy policy or our data practices, contact us at:
 
 Email: privacy@cotswoldway.com
-Address: The Cotswold Way Ltd, Bath, United Kingdom
+Address: The Cotswolds Way Ltd, Bath, United Kingdom
 
 You also have the right to lodge a complaint with the Information Commissioner's Office (ICO) at ico.org.uk if you believe your data protection rights have been violated.`,
   },
@@ -109,7 +109,7 @@ export default function PrivacyPage() {
             Last updated: 1 January 2026
           </p>
           <p className="font-body text-secondary leading-relaxed mb-12">
-            The Cotswold Way (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) is committed to protecting your privacy. This policy explains how we handle your personal data when you use our website and services.
+            The Cotswolds Way (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) is committed to protecting your privacy. This policy explains how we handle your personal data when you use our website and services.
           </p>
           <div className="space-y-10">
             {SECTIONS.map((section) => (

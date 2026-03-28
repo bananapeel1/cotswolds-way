@@ -40,7 +40,7 @@ export default function MapsPage() {
         <div className="max-w-5xl mx-auto">
           <h2 className="font-headline text-3xl font-bold text-primary mb-3">The Complete Route</h2>
           <p className="font-body text-secondary mb-10 max-w-2xl">
-            The Cotswold Way runs from Chipping Campden in the north to Bath in the south. Below are the 13 main segments with distance, elevation, and terrain notes.
+            The Cotswolds Way runs from Chipping Campden in the north to Bath in the south. Below are the 13 main segments with distance, elevation, and terrain notes.
           </p>
 
           <div className="space-y-4">

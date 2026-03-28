@@ -6,7 +6,7 @@ export default function Footer() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-12 max-w-7xl mx-auto">
         <div>
           <div className="text-surface font-headline text-2xl font-bold mb-6">
-            The Cotswold Way
+            The Cotswolds Way
           </div>
           <p className="text-sm text-primary-fixed leading-relaxed">
             Defining the standard for editorial-first trekking experiences in
@@ -103,7 +103,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-primary-container flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-primary-fixed/60">
-        <div>&copy; 2025 The Cotswold Way. Part of the National Trails collection.</div>
+        <div>&copy; 2025 The Cotswolds Way. Part of the National Trails collection.</div>
         <div className="flex gap-6">
           <Link href="/privacy" className="hover:text-white transition-colors">
             Privacy

@@ -46,7 +46,7 @@ export default function Navbar() {
           className="flex items-center gap-3 text-primary font-headline font-bold text-xl tracking-tight"
         >
           <img src="/logo.svg" alt="Logo" className="w-9 h-9" />
-          <span className="hidden sm:inline">The Cotswold Way</span>
+          <span className="hidden sm:inline">The Cotswolds Way</span>
         </Link>
 
         {/* Desktop nav */}
@@ -142,7 +142,7 @@ export default function Navbar() {
           }`}
         >
           <div className="flex justify-between items-center px-6 py-5 border-b border-outline-variant/10">
-            <span className="font-headline font-bold text-primary text-lg">The Cotswold Way</span>
+            <span className="font-headline font-bold text-primary text-lg">The Cotswolds Way</span>
             <button
               onClick={() => setMobileMenuOpen(false)}
               aria-label="Close menu"

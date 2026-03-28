@@ -13,7 +13,7 @@ export default function AccessibilityPage() {
             Accessibility Statement
           </h1>
           <p className="font-body text-lg text-primary-fixed max-w-2xl mx-auto leading-relaxed">
-            Our commitment to making The Cotswold Way platform accessible to everyone.
+            Our commitment to making The Cotswolds Way platform accessible to everyone.
           </p>
         </div>
       </section>
@@ -29,7 +29,7 @@ export default function AccessibilityPage() {
             <div>
               <h2 className="font-headline text-xl font-bold text-primary mb-4">Our Commitment</h2>
               <p className="font-body text-secondary text-sm leading-relaxed">
-                The Cotswold Way is committed to ensuring digital accessibility for people with disabilities. We are continually improving the user experience for everyone and applying the relevant accessibility standards. We aim to conform to the Web Content Accessibility Guidelines (WCAG) 2.2 at Level AA.
+                The Cotswolds Way is committed to ensuring digital accessibility for people with disabilities. We are continually improving the user experience for everyone and applying the relevant accessibility standards. We aim to conform to the Web Content Accessibility Guidelines (WCAG) 2.2 at Level AA.
               </p>
             </div>
 
@@ -76,7 +76,7 @@ export default function AccessibilityPage() {
             <div>
               <h2 className="font-headline text-xl font-bold text-primary mb-4">Trail Accessibility</h2>
               <p className="font-body text-secondary text-sm leading-relaxed mb-4">
-                The Cotswold Way National Trail includes terrain that presents physical accessibility challenges. Important information for visitors with mobility requirements:
+                The Cotswolds Way National Trail includes terrain that presents physical accessibility challenges. Important information for visitors with mobility requirements:
               </p>
               <ul className="space-y-3">
                 {[
@@ -118,7 +118,7 @@ export default function AccessibilityPage() {
             <div>
               <h2 className="font-headline text-xl font-bold text-primary mb-4">Feedback and Contact</h2>
               <p className="font-body text-secondary text-sm leading-relaxed mb-4">
-                We welcome your feedback on the accessibility of The Cotswold Way platform. If you encounter any barriers or have suggestions for improvement, please contact us:
+                We welcome your feedback on the accessibility of The Cotswolds Way platform. If you encounter any barriers or have suggestions for improvement, please contact us:
               </p>
               <div className="bg-surface-container-low rounded-xl p-6 shadow-[0_4px_24px_rgba(28,28,25,0.05)]">
                 <ul className="space-y-3">
@@ -128,7 +128,7 @@ export default function AccessibilityPage() {
                   </li>
                   <li className="flex items-center gap-3 font-body text-primary text-sm">
                     <span className="material-symbols-outlined text-lg text-tertiary">location_on</span>
-                    The Cotswold Way Ltd, Bath, United Kingdom
+                    The Cotswolds Way Ltd, Bath, United Kingdom
                   </li>
                 </ul>
                 <p className="font-body text-secondary text-xs mt-4">
