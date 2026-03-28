@@ -9,7 +9,7 @@ export interface MapProperty {
   name: string;
   village: string;
   price?: number;
-  rating: number;
+  rating: number | null;
   propertyType: string;
   dayOnTrail: number;
   longitude: number;
@@ -158,7 +158,7 @@ export default function TrailMap({
             ${p.name}
           </p>
           <p style="font-size: 11px; color: #665d4e; margin: 0;">
-            ${p.village} · Day ${p.dayOnTrail} · <span style="color: #541600;">★ ${p.rating}</span>
+            ${p.village} · Day ${p.dayOnTrail}${p.rating ? ` · <span style="color: #541600;">★ ${p.rating}</span>` : ''}
           </p>
         </div>
       `);

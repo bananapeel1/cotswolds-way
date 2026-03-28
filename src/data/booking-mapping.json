@@ -12,5 +12,18 @@
   "the-swan-hotel-wotton": { "bookingHotelId": null, "enabled": false },
   "the-royal-crescent-hotel": { "bookingHotelId": null, "enabled": false },
   "brooks-guesthouse-bath": { "bookingHotelId": null, "enabled": false },
-  "old-sodbury-house": { "bookingHotelId": null, "enabled": false }
+  "old-sodbury-house": { "bookingHotelId": null, "enabled": false },
+  "the-broadway-hotel": { "bookingHotelId": null, "enabled": false },
+  "the-mount-inn-stanton": { "bookingHotelId": null, "enabled": false },
+  "the-rising-sun-cleeve-hill": { "bookingHotelId": null, "enabled": false },
+  "hotel-du-vin-cheltenham": { "bookingHotelId": null, "enabled": false },
+  "lonsdale-house-cheltenham": { "bookingHotelId": null, "enabled": false },
+  "the-royal-george-birdlip": { "bookingHotelId": null, "enabled": false },
+  "the-bear-of-rodborough": { "bookingHotelId": null, "enabled": false },
+  "egypt-mill-nailsworth": { "bookingHotelId": null, "enabled": false },
+  "the-old-crown-uley": { "bookingHotelId": null, "enabled": false },
+  "the-beaufort-arms-hawkesbury": { "bookingHotelId": null, "enabled": false },
+  "the-compass-inn-tormarton": { "bookingHotelId": null, "enabled": false },
+  "the-lord-nelson-marshfield": { "bookingHotelId": null, "enabled": false },
+  "the-queensberry-hotel-bath": { "bookingHotelId": null, "enabled": false }
 }

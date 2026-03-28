@@ -35,8 +35,8 @@ export type Property = {
   trail_segment: string;
   day_on_trail: number;
   price_per_night: number;
-  rating: number;
-  review_count: number;
+  rating: number | null;
+  review_count: number | null;
   has_boot_dryer: boolean;
   has_luggage_transfer: boolean;
   has_laundry: boolean;

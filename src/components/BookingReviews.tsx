@@ -6,8 +6,8 @@ import type { ReviewsResponse, BookingReview } from "@/lib/booking-types";
 interface BookingReviewsProps {
   slug: string;
   bookingHotelId: string | null;
-  curatedRating: number;
-  curatedReviewCount: number;
+  curatedRating: number | null;
+  curatedReviewCount: number | null;
 }
 
 export default function BookingReviews({
@@ -69,24 +69,26 @@ export default function BookingReviews({
             What Other Walkers Say
           </h2>
         </div>
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex items-center gap-1 text-tertiary">
-            {Array.from({ length: Math.floor(curatedRating) }).map((_, i) => (
-              <span
-                key={i}
-                className="material-symbols-outlined text-sm filled"
-              >
-                star
-              </span>
-            ))}
+        {curatedRating && curatedReviewCount ? (
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex items-center gap-1 text-tertiary">
+              {Array.from({ length: Math.floor(curatedRating) }).map((_, i) => (
+                <span
+                  key={i}
+                  className="material-symbols-outlined text-sm filled"
+                >
+                  star
+                </span>
+              ))}
+            </div>
+            <span className="font-bold text-primary">{curatedRating}</span>
+            <span className="text-secondary text-sm">
+              ({curatedReviewCount} reviews)
+            </span>
           </div>
-          <span className="font-bold text-primary">{curatedRating}</span>
-          <span className="text-secondary text-sm">
-            ({curatedReviewCount} reviews)
-          </span>
-        </div>
+        ) : null}
         <p className="text-sm text-secondary">
-          Detailed reviews will be available soon.
+          Reviews coming soon.
         </p>
       </section>
     );
@@ -217,7 +219,7 @@ export default function BookingReviews({
         <div className="flex justify-center mt-8">
           <button
             onClick={() => setPage((p) => p + 1)}
-            className="flex items-center gap-2 px-6 py-3 bg-surface-container-high text-primary rounded-lg font-bold text-sm hover:bg-secondary-container transition-colors"
+            className="flex items-center gap-2 px-6 py-3 bg-surface-container-high text-primary rounded-full font-bold text-sm hover:bg-secondary-container transition-colors"
           >
             <span className="material-symbols-outlined text-sm">
               expand_more

@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { Newsreader, Manrope } from "next/font/google";
+import { Inter, Manrope } from "next/font/google";
 import "./globals.css";
 
-const newsreader = Newsreader({
-  variable: "--font-newsreader",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  style: ["normal", "italic"],
-  weight: ["400", "600", "700"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -34,7 +33,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${newsreader.variable} ${manrope.variable} h-full antialiased`}
+      className={`${inter.variable} ${manrope.variable} h-full antialiased`}
     >
       <head>
         <link

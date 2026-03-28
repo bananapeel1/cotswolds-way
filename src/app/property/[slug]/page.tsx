@@ -34,8 +34,8 @@ export default async function PropertyPage({
   const amenities = buildAmenities(property);
   const rating = property.booking?.reviewScore || property.rating;
   const reviewCount = property.booking?.reviewCount || property.review_count;
-  const fullStars = Math.floor(rating);
-  const hasHalf = rating - fullStars >= 0.3;
+  const fullStars = rating ? Math.floor(rating) : 0;
+  const hasHalf = rating ? rating - fullStars >= 0.3 : false;
   const mainImage = property.image_url || "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1200&q=80";
   const bookingHotelId = getBookingHotelId(slug);
 
@@ -70,15 +70,19 @@ export default async function PropertyPage({
                 {property.name}
               </h1>
               <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-1 text-tertiary">
-                  {Array.from({ length: fullStars }).map((_, i) => (
-                    <span key={i} className="material-symbols-outlined filled">star</span>
-                  ))}
-                  {hasHalf && <span className="material-symbols-outlined filled">star_half</span>}
-                  <span className="ml-1 font-bold text-on-background">{rating}</span>
-                  <span className="text-secondary font-normal">({reviewCount} reviews)</span>
-                </div>
-                <div className="w-1 h-1 rounded-full bg-outline-variant" />
+                {rating && reviewCount && (
+                  <>
+                    <div className="flex items-center gap-1 text-tertiary">
+                      {Array.from({ length: fullStars }).map((_, i) => (
+                        <span key={i} className="material-symbols-outlined filled">star</span>
+                      ))}
+                      {hasHalf && <span className="material-symbols-outlined filled">star_half</span>}
+                      <span className="ml-1 font-bold text-on-background">{rating}</span>
+                      <span className="text-secondary font-normal">({reviewCount} reviews)</span>
+                    </div>
+                    <div className="w-1 h-1 rounded-full bg-outline-variant" />
+                  </>
+                )}
                 <div className="flex items-center gap-1 font-semibold text-primary">
                   <span className="material-symbols-outlined">location_on</span>
                   {property.village}{property.postcode ? `, ${property.postcode.split(" ")[0]}` : ""}

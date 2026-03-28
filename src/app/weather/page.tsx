@@ -178,7 +178,7 @@ export default function WeatherPage() {
             href="https://www.metoffice.gov.uk/"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-tertiary text-on-tertiary px-8 py-3 rounded-lg font-label text-sm font-bold uppercase tracking-widest hover:bg-tertiary-container transition-all"
+            className="inline-flex items-center gap-2 bg-primary text-white px-8 py-3 rounded-full font-label text-sm font-bold hover:bg-primary-container transition-all"
           >
             <span className="material-symbols-outlined text-lg">open_in_new</span>
             Visit Met Office

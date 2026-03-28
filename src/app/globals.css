@@ -2,8 +2,8 @@
 
 @theme inline {
   /* Primary: Deep Forest */
-  --color-primary: #173124;
-  --color-primary-container: #2d4739;
+  --color-primary: #154212;
+  --color-primary-container: #1e5a18;
   --color-primary-fixed: #ccead6;
   --color-primary-fixed-dim: #b0cdbb;
   --color-on-primary: #ffffff;
@@ -22,15 +22,15 @@
   --color-on-secondary-fixed: #211b0f;
   --color-on-secondary-fixed-variant: #4e4638;
 
-  /* Tertiary: Trail Marker */
-  --color-tertiary: #541600;
-  --color-tertiary-container: #7a2300;
-  --color-tertiary-fixed: #ffdbd0;
-  --color-tertiary-fixed-dim: #ffb59d;
+  /* Tertiary: Green accent (was orange Trail Marker) */
+  --color-tertiary: #154212;
+  --color-tertiary-container: #bcf0ae;
+  --color-tertiary-fixed: #d4f5c8;
+  --color-tertiary-fixed-dim: #bcf0ae;
   --color-on-tertiary: #ffffff;
-  --color-on-tertiary-container: #ff9069;
-  --color-on-tertiary-fixed: #390c00;
-  --color-on-tertiary-fixed-variant: #832600;
+  --color-on-tertiary-container: #002201;
+  --color-on-tertiary-fixed: #002201;
+  --color-on-tertiary-fixed-variant: #154212;
 
   /* Surface system */
   --color-surface: #fcf9f4;
@@ -63,8 +63,8 @@
   --color-on-error-container: #93000a;
 
   /* Typography */
-  --font-headline: "Newsreader", serif;
-  --font-body: "Manrope", sans-serif;
+  --font-headline: "Manrope", sans-serif;
+  --font-body: "Inter", sans-serif;
   --font-label: "Manrope", sans-serif;
 
   /* Border radius */

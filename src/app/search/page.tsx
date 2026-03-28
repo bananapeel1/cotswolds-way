@@ -32,11 +32,10 @@ export default async function SearchPage({
     const distanceMiles = p.trail_distance_miles;
     const hasTransfer = p.has_taxi_service && distanceMiles > 0.3;
     const propertyType = p.property_type || "bnb";
-    const price = Math.round(p.price_per_night / 100);
     return {
       slug: p.slug,
       name: p.name,
-      rating: p.rating,
+      rating: p.rating ?? null,
       propertyType,
       typeLabel: TYPE_LABELS[propertyType] || propertyType,
       typeIcon: TYPE_ICONS[propertyType] || "home",
@@ -44,8 +43,6 @@ export default async function SearchPage({
         ? `${distanceMiles} miles with taxi transfer`
         : `${distanceMiles} miles off trail`,
       distanceIcon: hasTransfer ? "local_taxi" : "navigation",
-      price,
-      priceLabel: propertyType === "campsite" ? `/pitch` : `/night`,
       badge: null as string | null,
       badgeColor: "",
       urgency: `${p.village} · Day ${p.day_on_trail}`,
@@ -67,8 +64,7 @@ export default async function SearchPage({
     slug: p.slug,
     name: p.name,
     village: p.village,
-    price: Math.round(p.price_per_night / 100),
-    rating: p.rating,
+    rating: p.rating ?? null,
     propertyType: p.property_type,
     dayOnTrail: p.day_on_trail,
     longitude: p.longitude,

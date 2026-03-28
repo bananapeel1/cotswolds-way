@@ -34,7 +34,7 @@ export default function BookingWidget({
             href={websiteUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="block w-full bg-tertiary text-on-tertiary py-4 rounded-xl font-bold text-lg hover:bg-tertiary-container shadow-lg shadow-tertiary/20 active:scale-[0.98] transition-all mb-3 text-center"
+            className="block w-full bg-primary text-white py-4 rounded-full font-bold text-lg hover:bg-primary-container active:scale-[0.98] transition-all mb-3 text-center"
           >
             Check Availability
             <span className="material-symbols-outlined text-base ml-2 align-middle">
@@ -44,7 +44,7 @@ export default function BookingWidget({
         ) : (
           <button
             disabled
-            className="w-full bg-surface-container-high text-secondary py-4 rounded-xl font-bold text-lg cursor-not-allowed mb-3"
+            className="w-full bg-surface-container-high text-secondary py-4 rounded-full font-bold text-lg cursor-not-allowed mb-3"
           >
             Booking Link Coming Soon
           </button>

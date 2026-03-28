@@ -8,14 +8,12 @@ import type { MapProperty } from "@/components/TrailMap";
 interface AccommodationCard {
   slug: string;
   name: string;
-  rating: number;
+  rating: number | null;
   propertyType: string;
   typeLabel: string;
   typeIcon: string;
   distance: string;
   distanceIcon: string;
-  price: number;
-  priceLabel: string;
   badge: string | null;
   badgeColor: string;
   urgency: string;
@@ -47,17 +45,9 @@ const PROPERTY_TYPE_OPTIONS: { value: PropertyTypeFilter; label: string }[] = [
   { value: "hostel", label: "Hostels" },
 ];
 
-const BUDGET_OPTIONS: { value: number | null; label: string }[] = [
-  { value: null, label: "Any" },
-  { value: 50, label: "Under \u00a350" },
-  { value: 100, label: "Under \u00a3100" },
-  { value: 150, label: "Under \u00a3150" },
-  { value: 200, label: "Under \u00a3200" },
-];
-
 const DAY_OPTIONS: { value: number | null; label: string }[] = [
   { value: null, label: "Any" },
-  ...Array.from({ length: 8 }, (_, i) => ({
+  ...Array.from({ length: 10 }, (_, i) => ({
     value: i + 1,
     label: `Day ${i + 1}`,
   })),
@@ -75,23 +65,19 @@ export default function SearchLayout({
 
   // Filter state
   const [propertyType, setPropertyType] = useState<PropertyTypeFilter>(null);
-  const [maxBudget, setMaxBudget] = useState<number | null>(null);
   const [dogFriendly, setDogFriendly] = useState(false);
   const [dayOnTrail, setDayOnTrail] = useState<number | null>(null);
-  const [budgetOpen, setBudgetOpen] = useState(false);
   const [dayOpen, setDayOpen] = useState(false);
 
   // Count active filters
   const activeFilterCount = [
     propertyType !== null,
-    maxBudget !== null,
     dogFriendly,
     dayOnTrail !== null,
   ].filter(Boolean).length;
 
   const clearFilters = () => {
     setPropertyType(null);
-    setMaxBudget(null);
     setDogFriendly(false);
     setDayOnTrail(null);
   };
@@ -100,12 +86,11 @@ export default function SearchLayout({
   const filtered = useMemo(() => {
     return accommodations.filter((acc) => {
       if (propertyType && acc.propertyType !== propertyType) return false;
-      if (maxBudget && acc.price > maxBudget) return false;
       if (dogFriendly && !acc.isDogFriendly) return false;
       if (dayOnTrail && acc.dayOnTrail !== dayOnTrail) return false;
       return true;
     });
-  }, [accommodations, propertyType, maxBudget, dogFriendly, dayOnTrail]);
+  }, [accommodations, propertyType, dogFriendly, dayOnTrail]);
 
   // Filter map properties to match
   const filteredSlugs = useMemo(
@@ -188,48 +173,6 @@ export default function SearchLayout({
 
           {/* Second row: Budget, Dog-friendly, Day on Trail, Clear */}
           <div className="flex gap-2 items-center overflow-x-auto pb-3 no-scrollbar">
-            {/* Budget dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setBudgetOpen(!budgetOpen);
-                  setDayOpen(false);
-                }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
-                  maxBudget !== null
-                    ? "bg-secondary-container text-on-secondary-container"
-                    : "bg-surface-container-high text-on-surface-variant hover:bg-secondary-container/50"
-                }`}
-              >
-                {maxBudget
-                  ? `Under \u00a3${maxBudget}`
-                  : "Budget"}
-                <span className="material-symbols-outlined text-sm">
-                  keyboard_arrow_down
-                </span>
-              </button>
-              {budgetOpen && (
-                <div className="absolute top-full left-0 mt-1 bg-surface-container-lowest rounded-lg shadow-lg border border-outline-variant/20 py-1 z-30 min-w-[140px]">
-                  {BUDGET_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.label}
-                      onClick={() => {
-                        setMaxBudget(opt.value);
-                        setBudgetOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-xs font-body hover:bg-surface-container-high transition-colors ${
-                        maxBudget === opt.value
-                          ? "text-primary font-bold"
-                          : "text-secondary"
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Dog-friendly toggle */}
             <button
               onClick={() => setDogFriendly(!dogFriendly)}
@@ -248,7 +191,6 @@ export default function SearchLayout({
               <button
                 onClick={() => {
                   setDayOpen(!dayOpen);
-                  setBudgetOpen(false);
                 }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
                   dayOnTrail !== null
@@ -352,14 +294,16 @@ export default function SearchLayout({
                       <h4 className="font-headline text-xl font-bold text-primary">
                         {acc.name}
                       </h4>
-                      <div className="flex items-center text-tertiary">
-                        <span className="material-symbols-outlined text-sm filled">
-                          star
-                        </span>
-                        <span className="text-sm font-bold ml-1">
-                          {acc.rating}
-                        </span>
-                      </div>
+                      {acc.rating && (
+                        <div className="flex items-center text-tertiary">
+                          <span className="material-symbols-outlined text-sm filled">
+                            star
+                          </span>
+                          <span className="text-sm font-bold ml-1">
+                            {acc.rating}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <p className="text-[10px] font-label text-secondary uppercase tracking-widest font-bold mb-4 flex items-center gap-2">
                       <span className="material-symbols-outlined text-xs">
@@ -395,7 +339,7 @@ export default function SearchLayout({
                     >
                       {acc.urgency}
                     </p>
-                    <span className="bg-primary text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-primary-container transition-colors">
+                    <span className="bg-primary text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-primary-container transition-colors">
                       View Stay
                     </span>
                   </div>
@@ -451,10 +395,12 @@ export default function SearchLayout({
                         <span className="material-symbols-outlined text-[10px]">{selectedProperty.typeIcon}</span>
                         {selectedProperty.typeLabel}
                       </span>
-                      <div className="flex items-center gap-0.5 text-tertiary">
-                        <span className="material-symbols-outlined text-xs filled">star</span>
-                        <span className="text-xs font-bold">{selectedMapProp.rating}</span>
-                      </div>
+                      {selectedMapProp.rating && (
+                        <div className="flex items-center gap-0.5 text-tertiary">
+                          <span className="material-symbols-outlined text-xs filled">star</span>
+                          <span className="text-xs font-bold">{selectedMapProp.rating}</span>
+                        </div>
+                      )}
                     </div>
                     <h3 className="font-headline text-base sm:text-lg font-bold text-primary truncate leading-tight">
                       {selectedProperty.name}
