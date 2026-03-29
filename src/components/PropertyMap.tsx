@@ -110,7 +110,7 @@ export default function PropertyMap({ name, village, longitude, latitude }: Prop
       inner.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px">hotel</span>`;
       el.appendChild(inner);
 
-      new mapboxgl.Marker({ element: el, anchor: "bottom-left" })
+      new mapboxgl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([lng, lat])
         .setPopup(
           new mapboxgl.Popup({ offset: 25, closeButton: false })

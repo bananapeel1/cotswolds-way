@@ -78,6 +78,14 @@ export default function SearchLayout({
   const [dogFriendly, setDogFriendly] = useState(false);
   const [stageFilter, setStageFilter] = useState<number | null>(null);
   const [stageOpen, setStageOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Plan
   const [planSlugs, setPlanSlugs] = useState<string[]>([]);
@@ -129,7 +137,7 @@ export default function SearchLayout({
       {/* Left panel — collapsible on desktop */}
       <section
         className={`bg-surface flex flex-col overflow-hidden ${mobileView === "map" ? "hidden lg:flex" : "flex"} w-full lg:w-auto shrink-0`}
-        style={{ width: typeof window !== "undefined" && window.innerWidth >= 1024 ? `${panelWidth}px` : undefined }}
+        style={{ width: isDesktop ? `${panelWidth}px` : undefined }}
       >
         {/* My Plan — sticky top */}
         {planSlugs.length > 0 && (
@@ -234,7 +242,7 @@ export default function SearchLayout({
                       selectedSlug === acc.slug ? "border-primary shadow-md" : inPlan ? "border-primary/30" : "border-outline-variant/10 hover:shadow-sm"
                     }`}
                   >
-                    <div className="flex h-[120px]">
+                    <div className="flex min-h-[120px]">
                       {/* Image */}
                       <Link href={`/property/${acc.slug}`} className="w-28 shrink-0 overflow-hidden">
                         <img className="w-full h-full object-cover" alt={acc.name} src={acc.image} />

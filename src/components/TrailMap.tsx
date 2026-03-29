@@ -137,7 +137,7 @@ export default function TrailMap({
         if (onMarkerClick) onMarkerClick(p.slug);
       });
 
-      const marker = new mapboxgl.Marker({ element: el, anchor: "bottom-left" })
+      const marker = new mapboxgl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([p.longitude, p.latitude])
         .addTo(map.current!);
 

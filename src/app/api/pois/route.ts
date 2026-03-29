@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 /**
  * GET /api/pois
  *
  * Fetches points of interest along the Cotswold Way corridor from
  * OpenStreetMap's Overpass API. Results are cached for 24 hours.
- *
- * The bounding box covers a ~2km corridor either side of the trail:
- *   South-west: 51.35, -2.50  (Bath)
- *   North-east: 52.10, -1.70  (Chipping Campden)
+ * POIs are filtered to within 2.5km of the actual trail line.
  */
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -86,6 +85,7 @@ export interface POI {
   name: string;
   latitude: number;
   longitude: number;
+  distanceFromTrail: number; // meters from nearest point on trail
   tags: Record<string, string>;
 }
 
@@ -119,6 +119,93 @@ let cachedPOIs: POI[] | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
+// Trail coordinates cache
+let trailCoords: [number, number][] | null = null;
+
+const MAX_DISTANCE_M = 2500; // 2.5km from trail
+
+function loadTrailCoordinates(): [number, number][] {
+  if (trailCoords) return trailCoords;
+
+  const filePath = join(process.cwd(), "public", "data", "cotswold-way.geojson");
+  const raw = readFileSync(filePath, "utf-8");
+  const geojson = JSON.parse(raw);
+
+  // Extract coordinates from the first feature (LineString or MultiLineString)
+  const feature = geojson.features?.[0];
+  if (!feature) return [];
+
+  let coords: number[][];
+  if (feature.geometry.type === "MultiLineString") {
+    coords = feature.geometry.coordinates.flat();
+  } else {
+    coords = feature.geometry.coordinates;
+  }
+
+  // GeoJSON is [lng, lat], we store as [lat, lng] for distance calculations
+  trailCoords = coords.map((c: number[]) => [c[1], c[0]] as [number, number]);
+  return trailCoords;
+}
+
+// Haversine distance in meters between two points [lat, lng]
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Distance from a point to a line segment (projected onto the segment)
+function pointToSegmentDistance(
+  pLat: number, pLon: number,
+  aLat: number, aLon: number,
+  bLat: number, bLon: number
+): number {
+  // Project point onto segment using simple linear interpolation
+  const dx = bLon - aLon;
+  const dy = bLat - aLat;
+  const lenSq = dx * dx + dy * dy;
+
+  if (lenSq === 0) return haversineDistance(pLat, pLon, aLat, aLon);
+
+  let t = ((pLon - aLon) * dx + (pLat - aLat) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const projLat = aLat + t * dy;
+  const projLon = aLon + t * dx;
+
+  return haversineDistance(pLat, pLon, projLat, projLon);
+}
+
+// Find minimum distance from a point to the trail polyline
+function distanceToTrail(lat: number, lon: number, trail: [number, number][]): number {
+  let minDist = Infinity;
+
+  // Quick pre-filter: ~0.03 degrees ≈ ~3.3km at this latitude
+  const ROUGH_THRESHOLD = 0.035;
+
+  for (let i = 0; i < trail.length - 1; i++) {
+    const [aLat, aLon] = trail[i];
+    const [bLat, bLon] = trail[i + 1];
+
+    // Rough bounding box check — skip segments far away
+    const segMinLat = Math.min(aLat, bLat) - ROUGH_THRESHOLD;
+    const segMaxLat = Math.max(aLat, bLat) + ROUGH_THRESHOLD;
+    const segMinLon = Math.min(aLon, bLon) - ROUGH_THRESHOLD;
+    const segMaxLon = Math.max(aLon, bLon) + ROUGH_THRESHOLD;
+
+    if (lat < segMinLat || lat > segMaxLat || lon < segMinLon || lon > segMaxLon) continue;
+
+    const dist = pointToSegmentDistance(lat, lon, aLat, aLon, bLat, bLon);
+    if (dist < minDist) minDist = dist;
+  }
+
+  return minDist;
+}
+
 function classifyElement(el: Record<string, unknown>): { type: string; category: string } | null {
   const tags = (el.tags || {}) as Record<string, string>;
 
@@ -147,7 +234,7 @@ function classifyElement(el: Record<string, unknown>): { type: string; category:
   return null;
 }
 
-async function fetchFromOverpass(): Promise<POI[]> {
+async function fetchFromOverpass(): Promise<Omit<POI, "distanceFromTrail">[]> {
   const res = await fetch(OVERPASS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -161,7 +248,7 @@ async function fetchFromOverpass(): Promise<POI[]> {
   const data = await res.json();
   const elements = data.elements as Record<string, unknown>[];
 
-  const pois: POI[] = [];
+  const pois: Omit<POI, "distanceFromTrail">[] = [];
 
   for (const el of elements) {
     const classification = classifyElement(el);
@@ -239,7 +326,21 @@ export async function GET() {
       return NextResponse.json({ pois: cachedPOIs, cached: true, count: cachedPOIs.length });
     }
 
-    const pois = await fetchFromOverpass();
+    const trail = loadTrailCoordinates();
+    const rawPois = await fetchFromOverpass();
+
+    // Filter by distance to trail and add distanceFromTrail field
+    const pois: POI[] = [];
+    for (const poi of rawPois) {
+      const dist = distanceToTrail(poi.latitude, poi.longitude, trail);
+      if (dist <= MAX_DISTANCE_M) {
+        pois.push({
+          ...poi,
+          distanceFromTrail: Math.round(dist / 10) * 10, // round to nearest 10m
+        });
+      }
+    }
+
     cachedPOIs = pois;
     cacheTimestamp = now;
 
