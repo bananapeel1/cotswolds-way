@@ -121,7 +121,7 @@ export default function SearchLayout({
   const selectedMapProp = selectedSlug ? filteredMapProperties.find((p) => p.slug === selectedSlug) || null : null;
 
   return (
-    <main className="flex-grow flex flex-col lg:flex-row h-[calc(100vh-65px)]">
+    <main className="flex-grow flex flex-col lg:flex-row h-[calc(100vh-65px)] overflow-hidden">
       {/* Mobile toggle */}
       <div className="lg:hidden flex bg-surface border-b border-outline-variant/20">
         <button onClick={() => setMobileView("list")}

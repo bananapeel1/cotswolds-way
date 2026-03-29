@@ -77,7 +77,11 @@ export default function TrailMap({
       }
     });
 
-    return () => { map.current?.remove(); map.current = null; };
+    // Resize map when container changes size (e.g. panel drag)
+    const observer = new ResizeObserver(() => { map.current?.resize(); });
+    observer.observe(mapContainer.current);
+
+    return () => { observer.disconnect(); map.current?.remove(); map.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
