@@ -20,14 +20,6 @@ export default function Footer() {
           <ul className="space-y-4 text-sm">
             <li>
               <Link
-                href="/maps"
-                className="text-primary-fixed hover:text-white transition-colors"
-              >
-                Official Maps
-              </Link>
-            </li>
-            <li>
-              <Link
                 href="/safety"
                 className="text-primary-fixed hover:text-white transition-colors"
               >

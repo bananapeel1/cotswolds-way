@@ -13,7 +13,6 @@ const mainLinks = [
 ];
 
 const trailLinks = [
-  { href: "/maps", label: "Official Maps", icon: "travel_explore" },
   { href: "/safety", label: "Safety Guide", icon: "health_and_safety" },
   { href: "/weather", label: "Weather", icon: "cloud" },
   { href: "/news", label: "Trail News", icon: "newspaper" },

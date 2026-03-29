@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import TrailMap from "@/components/TrailMap";
 import type { MapProperty } from "@/components/TrailMap";
@@ -61,7 +61,17 @@ export default function SearchLayout({
 }) {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(420);
+  const isDragging = useRef(false);
+  const handleMouseDown = useCallback(() => { isDragging.current = true; }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => { if (isDragging.current) setPanelWidth(Math.max(300, Math.min(600, e.clientX))); };
+    const onUp = () => { isDragging.current = false; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
 
   // Filters
   const [propertyType, setPropertyType] = useState<PropertyTypeFilter>(null);
@@ -118,12 +128,11 @@ export default function SearchLayout({
 
       {/* Left panel — collapsible on desktop */}
       <section
-        className={`bg-surface flex flex-col overflow-hidden border-r border-outline-variant/20 transition-all duration-300 ${
-          panelCollapsed ? "lg:w-0 lg:min-w-0 lg:overflow-hidden" : "lg:w-[420px] lg:min-w-[420px]"
-        } ${mobileView === "map" ? "hidden lg:flex" : "flex"} w-full`}
+        className={`bg-surface flex flex-col overflow-hidden ${mobileView === "map" ? "hidden lg:flex" : "flex"} w-full lg:w-auto shrink-0`}
+        style={{ width: typeof window !== "undefined" && window.innerWidth >= 1024 ? `${panelWidth}px` : undefined }}
       >
         {/* My Plan — sticky top */}
-        {planSlugs.length > 0 && !panelCollapsed && (
+        {planSlugs.length > 0 && (
           <div className="bg-primary/5 border-b border-primary/10 shrink-0">
             <button onClick={() => setPlanOpen(!planOpen)}
               className="w-full flex items-center justify-between px-5 py-3">
@@ -155,7 +164,7 @@ export default function SearchLayout({
         )}
 
         {/* Filters */}
-        {!panelCollapsed && (
+        {(
           <div className="bg-surface px-5 pt-5 pb-3 shrink-0">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-headline text-xl font-bold text-primary">Explore</h2>
@@ -207,7 +216,7 @@ export default function SearchLayout({
         )}
 
         {/* Cards list */}
-        {!panelCollapsed && (
+        {(
           <div className="px-4 pb-8 space-y-3 overflow-y-auto no-scrollbar flex-grow pt-2">
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -264,20 +273,17 @@ export default function SearchLayout({
         )}
       </section>
 
-      {/* Collapse toggle — desktop only */}
-      <button
-        onClick={() => setPanelCollapsed(!panelCollapsed)}
-        className="hidden lg:flex items-center justify-center w-6 bg-surface-container-high hover:bg-surface-container-highest border-r border-outline-variant/20 transition-colors shrink-0"
-        aria-label={panelCollapsed ? "Expand panel" : "Collapse panel"}
+      {/* Draggable resizer — desktop only */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="hidden lg:flex items-center justify-center w-2 bg-outline-variant/10 hover:bg-primary/20 cursor-col-resize transition-colors shrink-0 group"
       >
-        <span className={`material-symbols-outlined text-sm text-secondary transition-transform ${panelCollapsed ? "" : "rotate-180"}`}>
-          chevron_left
-        </span>
-      </button>
+        <div className="w-1 h-8 rounded-full bg-outline-variant/40 group-hover:bg-primary/40 transition-colors" />
+      </div>
 
       {/* Map */}
       <section
-        className={`flex-grow relative ${mobileView === "list" ? "hidden lg:block" : "block"}`}
+        className={`flex-1 min-h-0 min-w-0 relative ${mobileView === "list" ? "hidden lg:block" : "block"}`}
         style={mobileView === "map" ? { height: "calc(100vh - 65px - 49px)" } : undefined}
       >
         <TrailMap
