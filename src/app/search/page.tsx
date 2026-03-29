@@ -62,6 +62,7 @@ export default async function SearchPage({
     };
   });
 
+  const TYPE_LABELS_MAP: Record<string, string> = { hotel: "Hotel", inn: "Inn", bnb: "B&B", campsite: "Campsite", glamping: "Glamping", hostel: "Hostel" };
   const coordProperties = await getPropertiesWithCoordinates();
   const mapProperties: MapProperty[] = coordProperties.map((p) => ({
     slug: p.slug,
@@ -72,6 +73,9 @@ export default async function SearchPage({
     dayOnTrail: p.day_on_trail,
     longitude: p.longitude,
     latitude: p.latitude,
+    description: p.short_description || p.description?.substring(0, 120) || '',
+    typeLabel: TYPE_LABELS_MAP[p.property_type] || p.property_type,
+    trailStage: p.trail_stage,
   }));
 
   return (

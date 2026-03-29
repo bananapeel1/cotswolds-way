@@ -225,7 +225,7 @@ export default function SearchLayout({
                       selectedSlug === acc.slug ? "border-primary shadow-md" : inPlan ? "border-primary/30" : "border-outline-variant/10 hover:shadow-sm"
                     }`}
                   >
-                    <div className="flex h-[110px]">
+                    <div className="flex h-[120px]">
                       {/* Image */}
                       <Link href={`/property/${acc.slug}`} className="w-28 shrink-0 overflow-hidden">
                         <img className="w-full h-full object-cover" alt={acc.name} src={acc.image} />
@@ -286,47 +286,7 @@ export default function SearchLayout({
           onMarkerClick={(slug) => setSelectedSlug((prev) => (prev === slug ? null : slug))}
         />
 
-        {/* Centered property popup */}
-        {selectedProperty && selectedMapProp && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center p-6 pointer-events-none">
-            <div className="bg-white rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.2)] overflow-hidden max-w-sm w-full pointer-events-auto">
-              <div className="relative">
-                <img src={selectedProperty.image} alt={selectedProperty.name} className="w-full h-40 object-cover" />
-                <button onClick={() => setSelectedSlug(null)}
-                  className="absolute top-3 right-3 w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center shadow-sm hover:bg-white">
-                  <span className="material-symbols-outlined text-sm text-secondary">close</span>
-                </button>
-                <div className="absolute bottom-3 left-3">
-                  <span className="bg-white/90 backdrop-blur text-primary text-[10px] font-bold px-2.5 py-1 rounded-full">{selectedProperty.typeLabel}</span>
-                </div>
-              </div>
-              <div className="p-5">
-                <h3 className="font-headline text-lg font-bold text-primary mb-1">{selectedProperty.name}</h3>
-                <p className="text-xs text-secondary flex items-center gap-1 mb-3">
-                  <span className="material-symbols-outlined text-xs">location_on</span>
-                  {selectedMapProp.village} · Stage {selectedProperty.trailStage}
-                </p>
-                {selectedProperty.description && (
-                  <p className="text-xs text-secondary/80 line-clamp-3 mb-4">{selectedProperty.description}</p>
-                )}
-                <div className="flex items-center gap-3">
-                  <Link href={`/property/${selectedProperty.slug}`}
-                    className="flex-grow bg-primary text-white py-2.5 rounded-full text-sm font-bold text-center hover:bg-primary-container transition-colors">
-                    View Details
-                  </Link>
-                  <button onClick={() => togglePlan(selectedProperty.slug)}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
-                      planSlugs.includes(selectedProperty.slug) ? "border-primary bg-primary/10 text-primary" : "border-outline-variant/30 text-secondary hover:border-primary hover:text-primary"
-                    }`}>
-                    <span className="material-symbols-outlined text-lg">
-                      {planSlugs.includes(selectedProperty.slug) ? "check" : "add"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Popup now handled by TrailMap via Mapbox popup */}
       </section>
     </main>
   );
