@@ -121,29 +121,36 @@ export default function TrailMap({
       const isActive = p.slug === activeSlug;
       const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
       const isHostel = p.propertyType === "hostel";
-      const markerBg = isActive ? "#154212" : isCamping ? "#2d6a4f" : isHostel ? "#7b2cbf" : "#154212";
-      const markerIcon = isCamping ? "⛺" : isHostel ? "🏠" : "🏨";
+      const isInn = p.propertyType === "inn";
+      const markerBg = isActive ? "#154212" : isCamping ? "#2d6a4f" : isHostel ? "#5c4d3c" : isInn ? "#6b4423" : "#154212";
 
-      // Create custom marker element
       const el = document.createElement("div");
       el.className = "trail-map-marker";
       el.style.cursor = "pointer";
       el.innerHTML = `
         <div style="
+          width: 32px;
+          height: 32px;
           background: ${markerBg};
-          color: white;
-          padding: 5px 12px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: 700;
-          font-family: 'Manrope', sans-serif;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-          border: 2px solid white;
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          border: 2.5px solid white;
+          box-shadow: 0 3px 12px rgba(0,0,0,0.3);
           cursor: pointer;
           transition: transform 0.2s, box-shadow 0.2s;
-          white-space: nowrap;
-          ${isActive ? "transform: scale(1.15); box-shadow: 0 4px 16px rgba(84,22,0,0.4);" : ""}
-        ">${markerIcon}</div>
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          ${isActive ? "width: 38px; height: 38px; box-shadow: 0 4px 18px rgba(21,66,18,0.5);" : ""}
+        ">
+          <span style="
+            transform: rotate(45deg);
+            font-size: ${isActive ? "16px" : "14px"};
+            color: white;
+            font-family: 'Material Symbols Outlined';
+            font-variation-settings: 'FILL' 1;
+          ">${isCamping ? "forest" : isHostel ? "backpack" : isInn ? "local_bar" : "hotel"}</span>
+        </div>
       `;
 
       // Hover scale effect only (no popup)
