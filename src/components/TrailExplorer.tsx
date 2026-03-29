@@ -56,62 +56,11 @@ const POI_MATERIAL_ICONS: Record<string, string> = {
   church: "church", viewpoint: "visibility", picnic: "deck", campsite: "camping",
 };
 
-// Simple opening hours checker — handles common OSM formats
-function isOpenNow(hoursStr: string | undefined): boolean | null {
-  if (!hoursStr) return null; // unknown
-  if (hoursStr === "24/7") return true;
-
-  const now = new Date();
-  const dayNames = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-  const currentDay = dayNames[now.getDay()];
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  // Parse rules like "Mo-Fr 09:00-17:00; Sa 10:00-16:00"
-  const rules = hoursStr.split(";").map((r) => r.trim());
-  for (const rule of rules) {
-    const match = rule.match(/^([A-Za-z, -]+)\s+(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})$/);
-    if (!match) continue;
-
-    const dayPart = match[1];
-    const openMin = parseInt(match[2]) * 60 + parseInt(match[3]);
-    const closeMin = parseInt(match[4]) * 60 + parseInt(match[5]);
-
-    // Check if current day is in the day range
-    const dayRanges = dayPart.split(",").map((d) => d.trim());
-    let dayMatch = false;
-    for (const range of dayRanges) {
-      if (range.includes("-")) {
-        const [start, end] = range.split("-").map((d) => d.trim());
-        const startIdx = dayNames.indexOf(start);
-        const endIdx = dayNames.indexOf(end);
-        if (startIdx === -1 || endIdx === -1) continue;
-        const currentIdx = dayNames.indexOf(currentDay);
-        if (startIdx <= endIdx) {
-          dayMatch = currentIdx >= startIdx && currentIdx <= endIdx;
-        } else {
-          dayMatch = currentIdx >= startIdx || currentIdx <= endIdx;
-        }
-      } else {
-        dayMatch = range === currentDay;
-      }
-      if (dayMatch) break;
-    }
-
-    if (dayMatch && currentMinutes >= openMin && currentMinutes < closeMin) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function formatDistance(meters: number): string {
   if (meters < 100) return "On trail";
   if (meters < 1000) return `${meters}m off trail`;
   return `${(meters / 1000).toFixed(1)}km off trail`;
 }
-
-type SortMode = "distance" | "north-south";
 
 export default function TrailExplorer() {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -129,9 +78,6 @@ export default function TrailExplorer() {
   const [panelWidth, setPanelWidth] = useState(380);
   const [mapReady, setMapReady] = useState(false);
   const [mobileView, setMobileView] = useState<"list" | "map">("map");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [openNowFilter, setOpenNowFilter] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>("distance");
   const [hoveredPoiId, setHoveredPoiId] = useState<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -181,35 +127,16 @@ export default function TrailExplorer() {
   const visiblePois = useMemo(() => {
     let filtered = pois.filter((p) => activeTypes.includes(p.type));
 
-    // Stage filter
     if (stageFilter) {
       const range = STAGE_RANGES.find((s) => s.stage === stageFilter);
       if (range) filtered = filtered.filter((p) => p.latitude >= range.minLat && p.latitude <= range.maxLat);
     }
 
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter((p) => p.name.toLowerCase().includes(q));
-    }
-
-    // Open now filter
-    if (openNowFilter) {
-      filtered = filtered.filter((p) => {
-        const status = isOpenNow(p.tags.opening_hours);
-        return status === true || status === null; // show open + unknown
-      });
-    }
-
-    // Sort
-    if (sortMode === "distance") {
-      filtered.sort((a, b) => a.distanceFromTrail - b.distanceFromTrail);
-    } else {
-      filtered.sort((a, b) => b.latitude - a.latitude); // north first
-    }
+    // Sort by distance from trail
+    filtered.sort((a, b) => a.distanceFromTrail - b.distanceFromTrail);
 
     return filtered;
-  }, [pois, activeTypes, stageFilter, searchQuery, openNowFilter, sortMode]);
+  }, [pois, activeTypes, stageFilter]);
 
   const poisByType = useMemo(() => {
     const groups: Record<string, POI[]> = {};
@@ -335,8 +262,6 @@ export default function TrailExplorer() {
   const toggleLayer = (layerId: string) => { setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, enabled: !l.enabled } : l))); };
   const flyTo = (poi: POI) => { map.current?.flyTo({ center: [poi.longitude, poi.latitude], zoom: 15, pitch: 30, duration: 800 }); };
 
-  const activeFilterCount = (searchQuery.trim() ? 1 : 0) + (openNowFilter ? 1 : 0) + (stageFilter ? 1 : 0);
-
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-65px)] overflow-hidden">
 
@@ -365,28 +290,8 @@ export default function TrailExplorer() {
           </p>
         </div>
 
-        {/* Search box */}
-        <div className="px-5 pt-3 pb-1 shrink-0">
-          <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-sm text-secondary">search</span>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search POIs…"
-              className="w-full pl-9 pr-8 py-2.5 bg-surface-container-low rounded-lg border border-outline-variant/20 text-sm text-primary placeholder:text-secondary/50 focus:outline-none focus:border-primary/40"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary">
-                <span className="material-symbols-outlined text-sm">close</span>
-              </button>
-            )}
-          </div>
-        </div>
-
         {/* Stage filter */}
-        <div className="px-5 py-2 border-b border-outline-variant/10 shrink-0">
+        <div className="px-5 py-3 border-b border-outline-variant/10 shrink-0">
           <div className="relative">
             <button onClick={() => setStageOpen(!stageOpen)}
               className="w-full flex items-center justify-between px-3 py-2.5 bg-surface-container-low rounded-lg border border-outline-variant/20 text-sm text-primary">
@@ -427,35 +332,6 @@ export default function TrailExplorer() {
             ))}
           </div>
 
-          {/* Open Now toggle + Sort */}
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={() => setOpenNowFilter(!openNowFilter)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                openNowFilter ? "bg-primary text-white" : "text-secondary bg-surface-container-high hover:bg-surface-container-highest"
-              }`}
-            >
-              <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>schedule</span>
-              Open now
-            </button>
-
-            <button
-              onClick={() => setSortMode(sortMode === "distance" ? "north-south" : "distance")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-secondary bg-surface-container-high hover:bg-surface-container-highest transition-all"
-            >
-              <span className="material-symbols-outlined text-sm">sort</span>
-              {sortMode === "distance" ? "Nearest" : "N → S"}
-            </button>
-
-            {activeFilterCount > 0 && (
-              <button
-                onClick={() => { setSearchQuery(""); setOpenNowFilter(false); setStageFilter(null); }}
-                className="ml-auto text-[10px] font-bold text-secondary hover:text-primary transition-colors"
-              >
-                Clear {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""}
-              </button>
-            )}
-          </div>
         </div>
 
         {/* POI list */}

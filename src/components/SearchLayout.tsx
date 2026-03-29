@@ -175,7 +175,7 @@ export default function SearchLayout({
         {(
           <div className="bg-surface px-5 pt-5 pb-3 shrink-0">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-headline text-xl font-bold text-primary">Explore</h2>
+              <h2 className="font-headline text-xl font-bold text-primary flex items-center gap-2"><span className="material-symbols-outlined text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>bed</span>Stays</h2>
               <span className="text-xs font-label text-secondary">{filtered.length} stays</span>
             </div>
 
