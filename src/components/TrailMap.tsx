@@ -23,10 +23,12 @@ export default function TrailMap({
   properties,
   activeSlug,
   onMarkerClick,
+  planSlugs,
 }: {
   properties: MapProperty[];
   activeSlug?: string;
   onMarkerClick?: (slug: string) => void;
+  planSlugs?: string[];
 }) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -265,6 +267,50 @@ export default function TrailMap({
       });
     }, 300);
   }, [activeSlug, properties, loaded, onMarkerClick]);
+
+  // Draw route line between planned properties + highlight planned markers
+  useEffect(() => {
+    if (!map.current || !loaded) return;
+
+    // Build coordinates for planned properties sorted by trail stage
+    const plannedProps = (planSlugs || [])
+      .map(slug => properties.find(p => p.slug === slug))
+      .filter((p): p is MapProperty => !!p && !!p.longitude && !!p.latitude)
+      .sort((a, b) => (a.trailStage || a.dayOnTrail || 0) - (b.trailStage || b.dayOnTrail || 0));
+
+    const coords = plannedProps.map(p => [p.longitude, p.latitude]);
+
+    // Update or create the plan route source/layer
+    const source = map.current.getSource("plan-route") as mapboxgl.GeoJSONSource | undefined;
+    const geojson: GeoJSON.Feature = {
+      type: "Feature",
+      properties: {},
+      geometry: { type: "LineString", coordinates: coords.length >= 2 ? coords : [] },
+    };
+
+    if (source) {
+      source.setData(geojson);
+    } else {
+      map.current.addSource("plan-route", { type: "geojson", data: geojson });
+      map.current.addLayer({
+        id: "plan-route-line", type: "line", source: "plan-route",
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#541600", "line-width": 3, "line-dasharray": [4, 3], "line-opacity": 0.7 },
+      });
+    }
+
+    // Highlight planned markers with a gold border
+    const planSet = new Set(planSlugs || []);
+    markersRef.current.forEach(({ innerDiv }, slug) => {
+      if (planSet.has(slug)) {
+        innerDiv.style.borderColor = "#d4a017";
+        innerDiv.style.borderWidth = "3px";
+      } else {
+        innerDiv.style.borderColor = "white";
+        innerDiv.style.borderWidth = "2.5px";
+      }
+    });
+  }, [planSlugs, properties, loaded]);
 
   return (
     <div ref={mapContainer} className="w-full h-full" />
