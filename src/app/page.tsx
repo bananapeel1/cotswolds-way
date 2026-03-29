@@ -67,7 +67,7 @@ export default async function Home() {
               </div>
             </div>
             <Link
-              href="/itinerary"
+              href="/plan"
               className="w-full bg-primary text-white py-3 rounded-lg font-bold uppercase tracking-widest text-xs hover:bg-primary-container transition-all flex items-center justify-center gap-2"
             >
               Plan Your Itinerary
@@ -137,7 +137,7 @@ export default async function Home() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[600px]">
             {/* Main Card */}
-            <Link href="/itinerary" className="md:col-span-8 group relative rounded-2xl overflow-hidden cursor-pointer shadow-lg min-h-[400px]">
+            <Link href="/plan" className="md:col-span-8 group relative rounded-2xl overflow-hidden cursor-pointer shadow-lg min-h-[400px]">
               <img
                 alt="Misty Cotswold valley"
                 className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
@@ -173,7 +173,7 @@ export default async function Home() {
             </Link>
             {/* Side Cards */}
             <div className="md:col-span-4 grid grid-rows-2 gap-6">
-              <Link href="/itinerary" className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md bg-white p-8 border border-outline-variant/10">
+              <Link href="/plan" className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md bg-white p-8 border border-outline-variant/10">
                 <div className="relative z-10">
                   <h3 className="font-headline text-2xl font-bold text-primary mb-2">
                     The Weekend Explorer
@@ -195,7 +195,7 @@ export default async function Home() {
                   </span>
                 </div>
               </Link>
-              <Link href="/itinerary" className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md min-h-[200px]">
+              <Link href="/plan" className="group relative rounded-2xl overflow-hidden cursor-pointer shadow-md min-h-[200px]">
                 <img
                   alt="Forest path in the Cotswolds"
                   className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"

@@ -125,3 +125,14 @@ body {
 .trail-property-popup .mapboxgl-popup-tip {
   border-top-color: white;
 }
+
+/* Print styles */
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  nav, footer { display: none !important; }
+}
