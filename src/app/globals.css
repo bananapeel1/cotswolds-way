@@ -116,13 +116,16 @@ body {
   animation: slide-up 0.25s ease-out;
 }
 
-/* Mapbox popup styling */
-.trail-property-popup .mapboxgl-popup-content {
+/* Mapbox popup styling — must sit above all markers */
+.mapboxgl-popup {
+  z-index: 50 !important;
+}
+.mapboxgl-popup-content {
   border-radius: 16px;
   padding: 16px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
 }
-.trail-property-popup .mapboxgl-popup-tip {
+.mapboxgl-popup-tip {
   border-top-color: white;
 }
 
