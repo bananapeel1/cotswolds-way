@@ -244,7 +244,8 @@ export default function TrailMap({
       `;
 
       popupRef.current = new mapboxgl.Popup({
-        offset: 30,
+        offset: [0, -45],
+        anchor: "bottom",
         closeButton: true,
         maxWidth: "300px",
         className: "trail-property-popup",
