@@ -32,6 +32,7 @@ export default function TrailMap({
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, { marker: mapboxgl.Marker; el: HTMLDivElement; innerDiv: HTMLDivElement }>>(new Map());
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const removingPopup = useRef(false);
   const [loaded, setLoaded] = useState(false);
   const prevActiveSlug = useRef<string | undefined>(undefined);
 
@@ -165,10 +166,12 @@ export default function TrailMap({
   useEffect(() => {
     if (!map.current || !loaded) return;
 
-    // Remove previous popup
+    // Remove previous popup (flag prevents close handler from toggling selection)
     if (popupRef.current) {
+      removingPopup.current = true;
       popupRef.current.remove();
       popupRef.current = null;
+      removingPopup.current = false;
     }
 
     // Reset previous active marker style
@@ -255,7 +258,7 @@ export default function TrailMap({
         .addTo(map.current);
 
       popupRef.current.on("close", () => {
-        if (onMarkerClick && activeSlug) {
+        if (!removingPopup.current && onMarkerClick && activeSlug) {
           onMarkerClick(activeSlug);
         }
         popupRef.current = null;
