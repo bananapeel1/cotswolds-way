@@ -178,16 +178,19 @@ export default function TrailExplorer() {
   }, []);
 
   // Highlight marker when hoveredPoiId changes
+  // Style the inner circle element, NOT the marker root (which has Mapbox's translate3d)
   useEffect(() => {
     markersRef.current.forEach((marker, id) => {
       const el = marker.getElement();
+      const inner = el.firstElementChild as HTMLElement | null;
+      if (!inner) return;
       if (id === hoveredPoiId) {
-        el.style.transform = "scale(1.35)";
-        el.style.boxShadow = "0 4px 14px rgba(0,0,0,0.3)";
+        inner.style.transform = "scale(1.35)";
+        inner.style.boxShadow = "0 4px 14px rgba(0,0,0,0.3)";
         el.style.zIndex = "20";
       } else {
-        el.style.transform = "scale(1)";
-        el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+        inner.style.transform = "scale(1)";
+        inner.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
         el.style.zIndex = "1";
       }
     });
@@ -216,8 +219,8 @@ export default function TrailExplorer() {
 
       const iconName = POI_MATERIAL_ICONS[poi.type] || "location_on";
       const el = document.createElement("div");
-      el.style.cssText = `width:30px;height:30px;background:white;border:2px solid ${layerConfig.color};border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s`;
-      el.innerHTML = `<span class="material-symbols-outlined" style="font-size:16px;color:${layerConfig.color};font-variation-settings:'FILL' 1">${iconName}</span>`;
+      el.style.cssText = "cursor:pointer";
+      el.innerHTML = `<div style="width:30px;height:30px;background:white;border:2px solid ${layerConfig.color};border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.15);cursor:pointer;transition:transform 0.15s,box-shadow 0.15s"><span class="material-symbols-outlined" style="font-size:16px;color:${layerConfig.color};font-variation-settings:'FILL' 1">${iconName}</span></div>`;
 
       // Hover handlers for marker → card highlight
       el.addEventListener("mouseenter", () => { setHoveredPoiId(poi.id); });

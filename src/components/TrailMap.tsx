@@ -30,9 +30,10 @@ export default function TrailMap({
 }) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const markersRef = useRef<Map<string, { marker: mapboxgl.Marker; el: HTMLDivElement; innerDiv: HTMLDivElement }>>(new Map());
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const prevActiveSlug = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
@@ -69,10 +70,10 @@ export default function TrailMap({
       setLoaded(true);
     });
 
-    // Click on map background closes popup
+    // Click on map background deselects
     map.current.on("click", () => {
       if (onMarkerClick && activeSlug) {
-        onMarkerClick(activeSlug); // toggle off
+        onMarkerClick(activeSlug);
       }
     });
 
@@ -80,41 +81,40 @@ export default function TrailMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Add/update markers
+  // Create markers once when properties change
   useEffect(() => {
     if (!map.current || !loaded) return;
 
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    // Clean up old markers
+    markersRef.current.forEach(({ marker }) => marker.remove());
+    markersRef.current = new Map();
 
     properties.forEach((p) => {
       if (!p.longitude || !p.latitude) return;
 
-      const isActive = p.slug === activeSlug;
       const isCamping = p.propertyType === "campsite" || p.propertyType === "glamping";
       const isHostel = p.propertyType === "hostel";
       const isInn = p.propertyType === "inn";
-      const markerBg = isActive ? "#154212" : isCamping ? "#2d6a4f" : isHostel ? "#5c4d3c" : isInn ? "#6b4423" : "#154212";
-      const size = isActive ? 38 : 32;
+      const defaultBg = isCamping ? "#2d6a4f" : isHostel ? "#5c4d3c" : isInn ? "#6b4423" : "#154212";
 
       const el = document.createElement("div");
       el.className = "trail-map-marker";
       el.style.cursor = "pointer";
       el.innerHTML = `
         <div style="
-          width: ${size}px; height: ${size}px;
-          background: ${markerBg};
+          width: 32px; height: 32px;
+          background: ${defaultBg};
           border-radius: 50% 50% 50% 0;
           transform: rotate(-45deg);
           border: 2.5px solid white;
-          box-shadow: ${isActive ? "0 4px 18px rgba(21,66,18,0.5)" : "0 3px 12px rgba(0,0,0,0.3)"};
+          box-shadow: 0 3px 12px rgba(0,0,0,0.3);
           cursor: pointer;
-          transition: transform 0.2s, box-shadow 0.2s;
+          transition: transform 0.2s, box-shadow 0.2s, width 0.2s, height 0.2s;
           display: flex; align-items: center; justify-content: center;
         ">
           <span style="
             transform: rotate(45deg);
-            font-size: ${isActive ? "16px" : "14px"};
+            font-size: 14px;
             color: white;
             font-family: 'Material Symbols Outlined';
             font-variation-settings: 'FILL' 1;
@@ -128,8 +128,8 @@ export default function TrailMap({
         el.style.zIndex = "10";
       });
       el.addEventListener("mouseleave", () => {
-        if (!isActive && innerDiv) innerDiv.style.transform = "rotate(-45deg) scale(1)";
-        el.style.zIndex = isActive ? "10" : "1";
+        if (innerDiv) innerDiv.style.transform = "rotate(-45deg) scale(1)";
+        el.style.zIndex = "1";
       });
 
       el.addEventListener("click", (e) => {
@@ -141,11 +141,11 @@ export default function TrailMap({
         .setLngLat([p.longitude, p.latitude])
         .addTo(map.current!);
 
-      markersRef.current.push(marker);
+      markersRef.current.set(p.slug, { marker, el, innerDiv });
     });
 
-    // Fit bounds on initial load only (not when activeSlug changes)
-    if (properties.length > 1 && !activeSlug) {
+    // Fit bounds on initial load
+    if (properties.length > 1) {
       const bounds = new mapboxgl.LngLatBounds();
       properties.forEach((p) => {
         if (p.longitude && p.latitude) bounds.extend([p.longitude, p.latitude]);
@@ -155,9 +155,9 @@ export default function TrailMap({
         maxZoom: 11,
       });
     }
-  }, [properties, activeSlug, loaded, onMarkerClick]);
+  }, [properties, loaded, onMarkerClick]);
 
-  // Fly to active marker and show popup
+  // Handle activeSlug changes — update marker styles, show popup, pan (don't zoom)
   useEffect(() => {
     if (!map.current || !loaded) return;
 
@@ -167,20 +167,44 @@ export default function TrailMap({
       popupRef.current = null;
     }
 
+    // Reset previous active marker style
+    if (prevActiveSlug.current) {
+      const prev = markersRef.current.get(prevActiveSlug.current);
+      if (prev) {
+        const p = properties.find((prop) => prop.slug === prevActiveSlug.current);
+        const isCamping = p?.propertyType === "campsite" || p?.propertyType === "glamping";
+        const isHostel = p?.propertyType === "hostel";
+        const isInn = p?.propertyType === "inn";
+        const defaultBg = isCamping ? "#2d6a4f" : isHostel ? "#5c4d3c" : isInn ? "#6b4423" : "#154212";
+        prev.innerDiv.style.width = "32px";
+        prev.innerDiv.style.height = "32px";
+        prev.innerDiv.style.background = defaultBg;
+        prev.innerDiv.style.boxShadow = "0 3px 12px rgba(0,0,0,0.3)";
+        prev.el.style.zIndex = "1";
+      }
+    }
+
+    prevActiveSlug.current = activeSlug;
+
     if (!activeSlug) return;
+
+    // Highlight active marker
+    const active = markersRef.current.get(activeSlug);
+    if (active) {
+      active.innerDiv.style.width = "38px";
+      active.innerDiv.style.height = "38px";
+      active.innerDiv.style.background = "#154212";
+      active.innerDiv.style.boxShadow = "0 4px 18px rgba(21,66,18,0.5)";
+      active.el.style.zIndex = "10";
+    }
 
     const p = properties.find((prop) => prop.slug === activeSlug);
     if (!p) return;
 
-    // Fly to the marker
-    map.current.flyTo({
-      center: [p.longitude, p.latitude],
-      zoom: Math.max(map.current.getZoom(), 12),
-      duration: 800,
-      padding: { top: 100, bottom: 100, left: 50, right: 50 },
-    });
+    // Pan to marker without changing zoom level
+    map.current.panTo([p.longitude, p.latitude], { duration: 600 });
 
-    // Show popup next to marker after fly animation
+    // Show popup after pan
     setTimeout(() => {
       if (!map.current) return;
 
@@ -231,7 +255,7 @@ export default function TrailMap({
         }
         popupRef.current = null;
       });
-    }, 400);
+    }, 300);
   }, [activeSlug, properties, loaded, onMarkerClick]);
 
   return (
