@@ -1,7 +1,6 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
-import HomeMapPreview from "@/components/HomeMapPreview";
 import { getPropertiesWithCoordinates } from "@/lib/queries";
 
 export default async function Home() {
@@ -221,8 +220,22 @@ export default async function Home() {
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div className="order-2 lg:order-1">
-              <div className="relative w-full h-[400px] sm:h-[500px] lg:aspect-square lg:h-auto">
-                <HomeMapPreview properties={mapProperties} />
+              <div className="relative w-full aspect-[4/5] rounded-2xl overflow-hidden shadow-lg bg-surface-container-low">
+                <img
+                  src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Cotswold_Way_map.svg/800px-Cotswold_Way_map.svg.png"
+                  alt="Map of the Cotswold Way trail route from Chipping Campden to Bath"
+                  className="w-full h-full object-contain p-4"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur px-4 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary text-sm">route</span>
+                    <div>
+                      <p className="text-xs font-bold text-primary">102 Miles · Chipping Campden to Bath</p>
+                      <p className="text-[10px] text-secondary">72 verified stays along the trail</p>
+                    </div>
+                  </div>
+                  <p className="text-[8px] text-secondary/50">Map: Wikimedia Commons CC BY-SA</p>
+                </div>
               </div>
             </div>
             <div className="order-1 lg:order-2">
