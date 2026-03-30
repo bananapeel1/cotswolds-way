@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+
+export const metadata: Metadata = {
+  title: "Cotswold Way Safety Guide — Essential Tips for Walkers",
+  description:
+    "Stay safe on the Cotswold Way. Emergency contacts, navigation tips, weather hazards, first aid advice, and what to do if you get lost on England's 102-mile National Trail.",
+  alternates: { canonical: "https://thecotswoldsway.com/safety" },
+};
 
 export default function SafetyPage() {
   return (

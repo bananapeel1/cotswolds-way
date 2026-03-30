@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import TripPlanner from "@/components/TripPlanner";
+
+export const metadata: Metadata = {
+  title: "Plan Your Cotswold Way Walk — Itinerary Builder & Route Planner",
+  description:
+    "Build a custom Cotswold Way itinerary in minutes. Choose your pace (4–14 days), see walk difficulty scores, find pub lunch stops, estimate costs, and export GPX files for offline navigation.",
+  alternates: { canonical: "https://thecotswoldsway.com/plan" },
+};
 
 export default function PlanMyHikePage() {
   return (

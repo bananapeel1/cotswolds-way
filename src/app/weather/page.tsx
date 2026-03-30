@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Cotswold Way Weather Forecast — Best Time to Walk",
+  description:
+    "Live weather forecast for the Cotswold Way trail. Monthly temperature and rainfall data, best months to walk, and seasonal conditions from Chipping Campden to Bath.",
+  alternates: { canonical: "https://thecotswoldsway.com/weather" },
+};
 
 // Three points along the trail: north, middle, south
 const TRAIL_LOCATIONS = [

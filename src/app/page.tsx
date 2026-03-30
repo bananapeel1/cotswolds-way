@@ -1,7 +1,15 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import { getPropertiesWithCoordinates } from "@/lib/queries";
+
+export const metadata: Metadata = {
+  title: "Cotswold Way Accommodation & Walking Holiday Planner",
+  description:
+    "Book accommodation along the Cotswold Way National Trail. 72 verified B&Bs, hotels, hostels and campsites from Chipping Campden to Bath. Interactive trail map, itinerary builder, and pub finder.",
+  alternates: { canonical: "https://thecotswoldsway.com" },
+};
 
 export default async function Home() {
   const coords = await getPropertiesWithCoordinates();

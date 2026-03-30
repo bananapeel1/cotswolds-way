@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
@@ -7,6 +8,40 @@ import type { Property } from "@/lib/queries";
 import PropertyMap from "@/components/PropertyMap";
 import BookingWidget from "@/components/BookingWidget";
 import BookingReviews from "@/components/BookingReviews";
+
+const TYPE_LABELS: Record<string, string> = {
+  hotel: "Hotel", inn: "Inn", bnb: "B&B", campsite: "Campsite",
+  glamping: "Glamping", hostel: "Hostel", cottage: "Cottage",
+};
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const property = await getEnrichedPropertyBySlug(slug);
+  if (!property) return { title: "Property Not Found" };
+
+  const typeLabel = TYPE_LABELS[property.property_type] || property.property_type;
+  const title = `${property.name} — ${typeLabel} in ${property.village} on the Cotswold Way`;
+  const description = property.short_description
+    || `${property.name} is a ${typeLabel.toLowerCase()} in ${property.village} on Stage ${property.trail_stage} of the Cotswold Way. ${property.is_dog_friendly ? "Dog-friendly. " : ""}${property.trail_distance_miles} miles from the trail.`;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: `https://thecotswoldsway.com/property/${slug}` },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      ...(property.booking?.photos?.[0]?.url
+        ? { images: [{ url: property.booking.photos[0].url, width: 800, height: 600, alt: property.name }] }
+        : {}),
+    },
+  };
+}
 
 function buildAmenities(p: Property) {
   return [

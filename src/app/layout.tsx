@@ -16,10 +16,78 @@ const manrope = Manrope({
   display: "swap",
 });
 
+const SITE_URL = "https://thecotswoldsway.com";
+
 export const metadata: Metadata = {
-  title: "The Cotswolds Way | Book Trail Accommodation",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "The Cotswold Way | Book Trail Accommodation & Plan Your Walk",
+    template: "%s | The Cotswold Way",
+  },
   description:
-    "The smarter way to book accommodation along the Cotswold Way. Interactive trail map, verified near-trail stays, and seamless itinerary planning for independent walkers.",
+    "Plan and book your Cotswold Way walk. 102 miles from Chipping Campden to Bath with 72 verified near-trail stays, interactive trail map, pub stops, and day-by-day itinerary planner.",
+  keywords: [
+    "Cotswold Way",
+    "Cotswold Way accommodation",
+    "Cotswold Way walking holiday",
+    "Cotswold Way itinerary",
+    "Cotswold Way B&B",
+    "Cotswold Way camping",
+    "Chipping Campden to Bath walk",
+    "Cotswolds walking trail",
+    "Cotswold Way route planner",
+    "long distance walking England",
+    "National Trail accommodation",
+    "Cotswold Way pubs",
+    "Cotswold Way map",
+    "walking holiday Cotswolds",
+    "Cotswold Way stages",
+    "dog friendly Cotswold Way",
+    "Cotswold Way luggage transfer",
+    "best B&B Cotswold Way",
+    "where to stay Cotswold Way",
+    "Cotswold Way 7 day itinerary",
+  ],
+  authors: [{ name: "The Cotswold Way" }],
+  creator: "The Cotswold Way",
+  publisher: "The Cotswold Way",
+  openGraph: {
+    type: "website",
+    locale: "en_GB",
+    url: SITE_URL,
+    siteName: "The Cotswold Way",
+    title: "The Cotswold Way | Book Trail Accommodation & Plan Your Walk",
+    description:
+      "102 miles from Chipping Campden to Bath. Find verified near-trail stays, plan your itinerary, and discover pubs and amenities along England's finest walking trail.",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "The Cotswold Way — 102 miles from Chipping Campden to Bath",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "The Cotswold Way | Book Trail Accommodation & Plan Your Walk",
+    description:
+      "Plan your Cotswold Way walk with verified near-trail stays, interactive maps, and day-by-day itinerary planner.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
+  alternates: {
+    canonical: SITE_URL,
+  },
   icons: {
     icon: "/logo.svg",
   },

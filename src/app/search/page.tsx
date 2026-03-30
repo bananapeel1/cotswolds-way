@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import { getEnrichedProperties, getPropertiesWithCoordinates } from "@/lib/queries";
+
+export const metadata: Metadata = {
+  title: "Find Accommodation Along the Cotswold Way",
+  description:
+    "Browse 72 verified B&Bs, hotels, hostels and campsites along the Cotswold Way. Filter by village, trail stage, dog-friendly, and property type. Interactive map shows every stay near the trail.",
+  alternates: { canonical: "https://thecotswoldsway.com/search" },
+};
 import type { MapProperty } from "@/components/TrailMap";
 import SearchLayout from "@/components/SearchLayout";
 

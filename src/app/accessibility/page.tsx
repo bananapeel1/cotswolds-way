@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+
+export const metadata: Metadata = {
+  title: "Accessibility Statement",
+  description: "Accessibility statement for The Cotswold Way accommodation booking platform.",
+  robots: { index: false, follow: true },
+};
 
 export default function AccessibilityPage() {
   return (

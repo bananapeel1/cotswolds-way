@@ -2,8 +2,10 @@ import Navbar from "@/components/Navbar";
 import TrailExplorer from "@/components/TrailExplorer";
 
 export const metadata = {
-  title: "Trail Explorer | The Cotswolds Way",
-  description: "Find pubs, water points, toilets, shops and more along the Cotswold Way. Live GPS tracking shows what\u2019s nearest to you on the trail.",
+  title: "Cotswold Way Trail Explorer — Pubs, Water Points & Amenities Map",
+  description:
+    "Interactive map of pubs, cafes, water points, toilets, shops and transport along the Cotswold Way. Filter by type and trail stage. Essential planning tool for walkers.",
+  alternates: { canonical: "https://thecotswoldsway.com/explore" },
 };
 
 export default function ExplorePage() {

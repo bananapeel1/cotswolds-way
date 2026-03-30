@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Cotswold Way News — Trail Updates & Walking Tips",
+  description:
+    "Latest news, trail condition updates, and walking tips for the Cotswold Way. Path closures, seasonal highlights, and planning advice for your next walk.",
+  alternates: { canonical: "https://thecotswoldsway.com/news" },
+};
 
 const NEWS_ARTICLES = [
   {

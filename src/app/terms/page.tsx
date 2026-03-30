@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+
+export const metadata: Metadata = {
+  title: "Terms & Conditions",
+  description: "Terms and conditions for using The Cotswold Way accommodation booking platform.",
+  robots: { index: false, follow: true },
+};
 
 const SECTIONS = [
   {
