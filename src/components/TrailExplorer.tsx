@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Link from "next/link";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { VILLAGES, type PlanState, type DayStop } from "@/lib/plan-engine";
+import { VILLAGES, type PlannedAccommodation } from "@/lib/plan-engine";
+import { usePlanStorage } from "@/hooks/usePlanStorage";
 
 interface POI {
   id: number;
@@ -84,42 +85,33 @@ export default function TrailExplorer() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [dayFilter, setDayFilter] = useState<number | null>(null);
 
-  // Load user's walk plan from localStorage
-  interface WalkDay { day: number; from: string; to: string; minLat: number; maxLat: number; }
-  const [walkDays, setWalkDays] = useState<WalkDay[]>([]);
-  const [hasPlan, setHasPlan] = useState(false);
+  // Shared plan from localStorage
+  const { plan, hydrated } = usePlanStorage();
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("cotswold-plan");
-      if (!raw) return;
-      const stored = JSON.parse(raw);
-      if (stored.version !== 1 || !stored.plan?.stops?.length) return;
-      const plan: PlanState = stored.plan;
-      setHasPlan(true);
+  interface WalkDay { day: number; from: string; to: string; minLat: number; maxLat: number; accommodation?: PlannedAccommodation; }
 
-      const days: WalkDay[] = [];
-      const dir = plan.direction;
-      for (let i = 0; i < plan.stops.length; i++) {
-        const stop = plan.stops[i];
-        if (stop.restDay || stop.transfer) continue;
-        // Previous village is either the start (index 0) or the previous stop's village
-        const fromVillage = i === 0
-          ? (dir === "north_to_south" ? "Chipping Campden" : "Bath")
-          : plan.stops[i - 1].village;
-        const toVillage = stop.village;
+  const walkDays = useMemo(() => {
+    if (!plan.stops.length) return [];
+    const days: WalkDay[] = [];
+    const dir = plan.direction;
+    for (let i = 0; i < plan.stops.length; i++) {
+      const stop = plan.stops[i];
+      if (stop.restDay || stop.transfer) continue;
+      const fromVillage = i === 0
+        ? (dir === "north_to_south" ? "Chipping Campden" : "Bath")
+        : plan.stops[i - 1].village;
+      const toVillage = stop.village;
 
-        const fromV = VILLAGES.find((v) => v.name === fromVillage);
-        const toV = VILLAGES.find((v) => v.name === toVillage);
-        if (!fromV || !toV) continue;
+      const fromV = VILLAGES.find((v) => v.name === fromVillage);
+      const toV = VILLAGES.find((v) => v.name === toVillage);
+      if (!fromV || !toV) continue;
 
-        const minLat = Math.min(fromV.lat, toV.lat) - 0.005;
-        const maxLat = Math.max(fromV.lat, toV.lat) + 0.005;
-        days.push({ day: stop.day, from: fromVillage, to: toVillage, minLat, maxLat });
-      }
-      setWalkDays(days);
-    } catch { /* ignore parse errors */ }
-  }, []);
+      const minLat = Math.min(fromV.lat, toV.lat) - 0.005;
+      const maxLat = Math.max(fromV.lat, toV.lat) + 0.005;
+      days.push({ day: stop.day, from: fromVillage, to: toVillage, minLat, maxLat, accommodation: stop.accommodation });
+    }
+    return days;
+  }, [plan.stops, plan.direction]);
 
   // Per-type card limit: 15 on full trail view, unlimited when filtered
   const isFiltered = stageFilter !== null || dayFilter !== null;
@@ -469,7 +461,28 @@ export default function TrailExplorer() {
               <p className="text-xs text-secondary">Enable more layers or adjust filters</p>
             </div>
           ) : (
-            Object.entries(poisByType).map(([type, typePois]) => {
+            <>
+            {/* Your stay — shown when day filter is active */}
+            {dayFilter !== null && walkDays[dayFilter]?.accommodation && (
+              <div className="mx-5 mt-3 mb-2">
+                <Link href={`/property/${walkDays[dayFilter].accommodation!.slug}`}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-primary/5 border border-primary/15 hover:border-primary/30 transition-colors">
+                  {walkDays[dayFilter].accommodation!.image && (
+                    <img src={walkDays[dayFilter].accommodation!.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>bed</span>
+                      <span className="text-[9px] font-bold text-primary uppercase">Your stay tonight</span>
+                    </div>
+                    <p className="text-sm font-bold text-primary truncate">{walkDays[dayFilter].accommodation!.name}</p>
+                    <p className="text-[10px] text-secondary capitalize">{walkDays[dayFilter].accommodation!.propertyType} · {walkDays[dayFilter].accommodation!.village}</p>
+                  </div>
+                  <span className="material-symbols-outlined text-sm text-primary shrink-0">chevron_right</span>
+                </Link>
+              </div>
+            )}
+            {Object.entries(poisByType).map(([type, typePois]) => {
               const layer = layers.find((l) => l.types.includes(type));
               return (
                 <div key={type}>
@@ -531,7 +544,8 @@ export default function TrailExplorer() {
                   {typePois.length > cardLimit && <p className="px-5 py-2 text-[10px] text-secondary">+ {typePois.length - cardLimit} more</p>}
                 </div>
               );
-            })
+            })}
+            </>
           )}
         </div>
       </div>

@@ -11,6 +11,14 @@ export interface Village {
   lat: number;
 }
 
+export interface PlannedAccommodation {
+  slug: string;          // links to /property/[slug]
+  name: string;
+  village: string;
+  propertyType: string;  // "hotel" | "inn" | "bnb" etc.
+  image?: string;        // thumbnail URL
+}
+
 export interface DayStop {
   day: number;
   village: string;
@@ -21,6 +29,7 @@ export interface DayStop {
   transfer?: boolean;   // bus/taxi instead of walking
   restDay?: boolean;    // rest day, 0 miles, same village
   note?: string;        // user note for this stop
+  accommodation?: PlannedAccommodation; // assigned stay for this night
 }
 
 export interface Connection {
@@ -431,7 +440,7 @@ function renumberStops(stops: DayStop[], direction: "north_to_south" | "south_to
     }
     const prev = i === 0 ? startVillageName : stops[i - 1].village;
     const rebuilt = buildStop(s.village, prev, i + 1, direction);
-    return { ...rebuilt, note: s.note, restDay: s.restDay, transfer: s.transfer };
+    return { ...rebuilt, note: s.note, restDay: s.restDay, transfer: s.transfer, accommodation: s.accommodation };
   });
 }
 
@@ -537,6 +546,7 @@ export function insertRestDay(stops: DayStop[], afterIndex: number): DayStop[] {
     difficulty: "easy",
     walkScore: 0,
     restDay: true,
+    accommodation: prevStop.accommodation,
   };
 
   const newStops = [...stops.slice(0, afterIndex + 1), restStop, ...stops.slice(afterIndex + 1)];

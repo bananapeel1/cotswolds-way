@@ -89,7 +89,7 @@ export default async function SearchPage({
   return (
     <>
       <Navbar />
-      <SearchLayout accommodations={accommodations} mapProperties={mapProperties} />
+      <SearchLayout accommodations={accommodations} mapProperties={mapProperties} initialDay={sp.day ? parseInt(sp.day) : undefined} />
     </>
   );
 }

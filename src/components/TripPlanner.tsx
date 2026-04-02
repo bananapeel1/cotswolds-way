@@ -30,7 +30,7 @@ const DIFFICULTY_COLOUR: Record<string, string> = {
 };
 
 export default function TripPlanner() {
-  const { plan, updatePlan, lastSaved, hydrated } = usePlanStorage();
+  const { plan, updatePlan, setAccommodation, lastSaved, hydrated } = usePlanStorage();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [pois, setPois] = useState<POI[]>([]);
   const [highlightDays, setHighlightDays] = useState<number[]>([]);
@@ -237,20 +237,27 @@ export default function TripPlanner() {
       {step === 2 && stops.length > 0 && (
         <div className="space-y-5">
           {/* Summary strip */}
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { value: plan.days, label: "Days", icon: "calendar_today" },
-              { value: "102", label: "Miles", icon: "straighten" },
-              { value: avgMiles, label: "Mi/day", icon: "speed" },
-              { value: `${weather.tempLow}–${weather.tempHigh}°C`, label: weather.month, icon: RAINFALL_ICON[weather.rainfall] },
-            ].map((stat, i) => (
-              <div key={i} className="bg-surface-container-low rounded-xl p-3 text-center">
-                <span className="material-symbols-outlined text-sm text-secondary mb-1 block">{stat.icon}</span>
-                <p className="text-lg font-bold text-primary">{stat.value}</p>
-                <p className="text-[10px] text-secondary">{stat.label}</p>
+          {(() => {
+            const totalNights = stops.filter(s => !s.restDay).length - 1;
+            const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
+            return (
+              <div className="grid grid-cols-5 gap-3">
+                {[
+                  { value: plan.days, label: "Days", icon: "calendar_today" },
+                  { value: "102", label: "Miles", icon: "straighten" },
+                  { value: avgMiles, label: "Mi/day", icon: "speed" },
+                  { value: `${weather.tempLow}–${weather.tempHigh}°C`, label: weather.month, icon: RAINFALL_ICON[weather.rainfall] },
+                  { value: `${bookedNights}/${totalNights}`, label: "Nights booked", icon: "bed" },
+                ].map((stat, i) => (
+                  <div key={i} className="bg-surface-container-low rounded-xl p-3 text-center">
+                    <span className="material-symbols-outlined text-sm text-secondary mb-1 block">{stat.icon}</span>
+                    <p className="text-lg font-bold text-primary">{stat.value}</p>
+                    <p className="text-[10px] text-secondary">{stat.label}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            );
+          })()}
 
           {/* Elevation profile */}
           <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
@@ -327,9 +334,33 @@ export default function TripPlanner() {
                           </div>
                         )}
 
+                        {/* Accommodation */}
+                        {stop.accommodation ? (
+                          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-primary/5 border border-primary/10">
+                            {stop.accommodation.image && (
+                              <img src={stop.accommodation.image} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <Link href={`/property/${stop.accommodation.slug}`} className="text-xs font-bold text-primary hover:underline truncate block">
+                                {stop.accommodation.name}
+                              </Link>
+                              <p className="text-[10px] text-secondary capitalize">{stop.accommodation.propertyType} · {stop.accommodation.village}</p>
+                            </div>
+                            <button onClick={() => setAccommodation(stop.day, null)} className="text-secondary hover:text-red-500 shrink-0" title="Remove stay">
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </div>
+                        ) : i < stops.length - 1 && !stop.restDay ? (
+                          <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
+                            className="flex items-center gap-2 p-2.5 rounded-xl border border-dashed border-outline-variant/30 hover:border-primary/30 hover:bg-primary/5 transition-colors">
+                            <span className="material-symbols-outlined text-base text-secondary">bed</span>
+                            <span className="text-xs font-bold text-secondary">Find a stay in {stop.village}</span>
+                          </Link>
+                        ) : null}
+
                         {/* Actions */}
                         <div className="flex items-center gap-4 pt-2">
-                          <Link href={`/search?village=${encodeURIComponent(stop.village)}`}
+                          <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
                             className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
                             <span className="material-symbols-outlined text-sm">bed</span>
                             Find stays in {stop.village}

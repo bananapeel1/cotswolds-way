@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import TrailMap from "@/components/TrailMap";
 import type { MapProperty } from "@/components/TrailMap";
+import { usePlanStorage } from "@/hooks/usePlanStorage";
+import type { PlannedAccommodation } from "@/lib/plan-engine";
 
 interface AccommodationCard {
   slug: string;
@@ -52,30 +54,26 @@ const STAGE_OPTIONS: { value: number | null; label: string }[] = [
   { value: 8, label: "Stage 8: Tormarton → Bath" },
 ];
 
-// Stage village names for day labels
-const STAGE_VILLAGES: Record<number, string> = {
-  1: "Chipping Campden", 2: "Stanton", 3: "Cleeve Hill", 4: "Birdlip",
-  5: "Painswick", 6: "King's Stanley", 7: "Wotton", 8: "Bath",
-};
-
-interface PlanEntry {
-  slug: string;
-  night: number; // assigned night number
-}
-
 export default function SearchLayout({
   accommodations,
   mapProperties,
+  initialDay,
 }: {
   accommodations: AccommodationCard[];
   mapProperties: MapProperty[];
+  initialDay?: number;
 }) {
+
+  // Shared plan from localStorage
+  const { plan, setAccommodation, hydrated } = usePlanStorage();
+
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const [panelWidth, setPanelWidth] = useState(420);
   const isDragging = useRef(false);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const listRef = useRef<HTMLDivElement>(null);
+  const [planOpen, setPlanOpen] = useState(true);
 
   // Scroll selected card to the top of the list with fast eased animation
   useEffect(() => {
@@ -89,9 +87,9 @@ export default function SearchLayout({
     const distance = targetTop - startTop;
     if (Math.abs(distance) < 2) return;
 
-    const duration = 300; // ms — fast but fluid
+    const duration = 300;
     const start = performance.now();
-    const ease = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // cubic ease-in-out
+    const ease = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
     function step(now: number) {
       const elapsed = now - start;
@@ -101,6 +99,7 @@ export default function SearchLayout({
     }
     requestAnimationFrame(step);
   }, [selectedSlug]);
+
   const handleMouseDown = useCallback(() => { isDragging.current = true; }, []);
 
   useEffect(() => {
@@ -125,47 +124,36 @@ export default function SearchLayout({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Plan with day assignment
-  const [planEntries, setPlanEntries] = useState<PlanEntry[]>([]);
-  const [planOpen, setPlanOpen] = useState(true);
+  // Derive plan-aware data
+  const hasPlan = plan.stops.length > 0;
+  const nightStops = useMemo(() =>
+    plan.stops.filter(s => !s.restDay).slice(0, -1), // exclude final arrival day
+    [plan.stops]
+  );
+  const bookedNights = useMemo(() => nightStops.filter(s => s.accommodation).length, [nightStops]);
+  const planSlugs = useMemo(() =>
+    plan.stops.filter(s => s.accommodation).map(s => s.accommodation!.slug),
+    [plan.stops]
+  );
+  const plannedSlugSet = useMemo(() => new Set(planSlugs), [planSlugs]);
 
-  const planSlugs = useMemo(() => planEntries.map(e => e.slug), [planEntries]);
+  // Find matching unbooked nights for an accommodation card
+  const getMatchingNights = useCallback((acc: AccommodationCard) => {
+    return nightStops.filter(s => !s.accommodation && s.village === acc.village);
+  }, [nightStops]);
 
-  const togglePlan = (slug: string) => {
-    setPlanEntries((prev) => {
-      if (prev.find(e => e.slug === slug)) {
-        // Remove and renumber
-        const removed = prev.filter(e => e.slug !== slug);
-        return removed.map((e, i) => ({ ...e, night: i + 1 }));
-      }
-      // Add: assign next night number
-      const acc = accommodations.find(a => a.slug === slug);
-      const newEntry: PlanEntry = { slug, night: prev.length + 1 };
-      const newList = [...prev, newEntry];
-      // Sort by trail stage and renumber
-      return newList
-        .sort((a, b) => {
-          const accA = accommodations.find(x => x.slug === a.slug);
-          const accB = accommodations.find(x => x.slug === b.slug);
-          return (accA?.trailStage || 0) - (accB?.trailStage || 0);
-        })
-        .map((e, i) => ({ ...e, night: i + 1 }));
+  const assignAccommodation = useCallback((day: number, acc: AccommodationCard) => {
+    setAccommodation(day, {
+      slug: acc.slug,
+      name: acc.name,
+      village: acc.village || "",
+      propertyType: acc.propertyType,
+      image: acc.image,
     });
-  };
+  }, [setAccommodation]);
 
-  const reassignNight = (slug: string, newNight: number) => {
-    setPlanEntries((prev) => {
-      const entry = prev.find(e => e.slug === slug);
-      if (!entry) return prev;
-      // Swap: find who has the target night, swap them
-      const other = prev.find(e => e.night === newNight && e.slug !== slug);
-      return prev.map(e => {
-        if (e.slug === slug) return { ...e, night: newNight };
-        if (other && e.slug === other.slug) return { ...e, night: entry.night };
-        return e;
-      });
-    });
-  };
+  // Highlighted day from URL param
+  const [highlightDay, setHighlightDay] = useState<number | null>(initialDay ?? null);
 
   const activeFilterCount = [propertyType !== null, dogFriendly, stageFilter !== null].filter(Boolean).length;
   const clearFilters = () => { setPropertyType(null); setDogFriendly(false); setStageFilter(null); };
@@ -182,13 +170,13 @@ export default function SearchLayout({
   const filteredSlugs = useMemo(() => new Set(filtered.map((a) => a.slug)), [filtered]);
   const filteredMapProperties = useMemo(() => mapProperties.filter((p) => filteredSlugs.has(p.slug)), [mapProperties, filteredSlugs]);
 
-  const planItems = useMemo(
-    () => planEntries
-      .sort((a, b) => a.night - b.night)
-      .map(e => ({ ...e, acc: accommodations.find(a => a.slug === e.slug)! }))
-      .filter(e => e.acc),
-    [accommodations, planEntries]
-  );
+  if (!hydrated) {
+    return (
+      <main className="flex-grow flex items-center justify-center h-[calc(100vh-65px)]">
+        <span className="material-symbols-outlined animate-spin text-primary text-2xl">progress_activity</span>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-grow flex flex-col lg:flex-row h-[calc(100vh-65px)] overflow-hidden">
@@ -210,47 +198,88 @@ export default function SearchLayout({
         style={{ width: isDesktop ? `${panelWidth}px` : undefined }}
       >
         {/* My Plan — sticky top */}
-        {planEntries.length > 0 && (
-          <div className="bg-primary/5 border-b border-primary/10 shrink-0">
-            <button onClick={() => setPlanOpen(!planOpen)}
-              className="w-full flex items-center justify-between px-5 py-3">
-              <div className="flex items-center gap-2">
+        <div className="bg-primary/5 border-b border-primary/10 shrink-0">
+          {hasPlan ? (
+            <>
+              <button onClick={() => setPlanOpen(!planOpen)}
+                className="w-full flex items-center justify-between px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-base text-primary">checklist</span>
+                  <span className="text-sm font-bold text-primary">My Plan</span>
+                  <span className="text-[10px] font-bold text-secondary">{bookedNights} of {nightStops.length} nights</span>
+                </div>
+                <span className={`material-symbols-outlined text-sm text-primary transition-transform ${planOpen ? "rotate-180" : ""}`}>keyboard_arrow_down</span>
+              </button>
+              {planOpen && (
+                <div className="px-5 pb-4 space-y-1.5">
+                  {nightStops.map((stop) => {
+                    const isHighlighted = highlightDay === stop.day;
+                    return (
+                      <div key={stop.day}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-colors ${
+                          isHighlighted ? "bg-primary/10 border border-primary/20" : "bg-white"
+                        }`}>
+                        <span className="bg-primary text-white text-[9px] font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0">
+                          {stop.day}
+                        </span>
+                        {stop.accommodation ? (
+                          <>
+                            <div className="min-w-0 flex-grow">
+                              <p className="text-xs font-bold text-primary truncate">{stop.accommodation.name}</p>
+                              <p className="text-[9px] text-secondary">{stop.village}</p>
+                            </div>
+                            <button
+                              onClick={() => setAccommodation(stop.day, null)}
+                              className="text-secondary hover:text-red-500 shrink-0"
+                              title="Remove stay"
+                            >
+                              <span className="material-symbols-outlined text-sm">close</span>
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              // Filter to the stage containing this village
+                              const match = accommodations.find(a => a.village === stop.village);
+                              if (match?.trailStage) setStageFilter(match.trailStage);
+                              setHighlightDay(stop.day);
+                            }}
+                            className="flex-grow flex items-center gap-1.5 text-left"
+                          >
+                            <span className="text-xs text-secondary truncate">{stop.village}</span>
+                            <span className="text-[10px] font-bold text-tertiary whitespace-nowrap">Find stay</span>
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {/* Progress bar */}
+                  {nightStops.length > 0 && (
+                    <div className="mt-2">
+                      <div className="h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all"
+                          style={{ width: `${(bookedNights / nightStops.length) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="px-5 py-4">
+              <div className="flex items-center gap-2 mb-2">
                 <span className="material-symbols-outlined text-base text-primary">checklist</span>
                 <span className="text-sm font-bold text-primary">My Plan</span>
-                <span className="bg-primary text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">{planEntries.length}</span>
               </div>
-              <span className={`material-symbols-outlined text-sm text-primary transition-transform ${planOpen ? "rotate-180" : ""}`}>keyboard_arrow_down</span>
-            </button>
-            {planOpen && (
-              <div className="px-5 pb-4 space-y-2">
-                {planItems.map((item) => (
-                  <div key={item.slug} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2">
-                    {/* Night selector */}
-                    <select
-                      value={item.night}
-                      onChange={(e) => reassignNight(item.slug, parseInt(e.target.value))}
-                      className="w-14 text-center bg-primary text-white text-[10px] font-bold rounded-full py-1 appearance-none cursor-pointer"
-                    >
-                      {planEntries.map((_, i) => (
-                        <option key={i + 1} value={i + 1}>N{i + 1}</option>
-                      ))}
-                    </select>
-                    <div className="min-w-0 flex-grow">
-                      <p className="text-sm font-bold text-primary truncate">{item.acc.name}</p>
-                      <p className="text-[10px] text-secondary">
-                        {item.acc.village} · Stage {item.acc.trailStage}
-                      </p>
-                    </div>
-                    <button onClick={() => togglePlan(item.slug)} className="text-secondary hover:text-red-500 shrink-0">
-                      <span className="material-symbols-outlined text-sm">close</span>
-                    </button>
-                  </div>
-                ))}
-                <button onClick={() => setPlanEntries([])} className="text-xs text-secondary hover:text-primary transition-colors">Clear plan</button>
-              </div>
-            )}
-          </div>
-        )}
+              <p className="text-xs text-secondary mb-2">Plan your walk to assign stays to each night</p>
+              <Link href="/plan" className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-tertiary transition-colors">
+                <span className="material-symbols-outlined text-sm">arrow_forward</span> Create a plan
+              </Link>
+            </div>
+          )}
+        </div>
 
         {/* Filters */}
         <div className="bg-surface px-5 pt-5 pb-3 shrink-0">
@@ -315,23 +344,24 @@ export default function SearchLayout({
             </div>
           ) : (
             filtered.map((acc) => {
-              const planEntry = planEntries.find(e => e.slug === acc.slug);
-              const inPlan = !!planEntry;
+              const isPlanned = plannedSlugSet.has(acc.slug);
+              const plannedStop = isPlanned ? plan.stops.find(s => s.accommodation?.slug === acc.slug) : null;
+              const matchingNights = hasPlan ? getMatchingNights(acc) : [];
               return (
                 <div key={acc.slug}
                   ref={(el) => { if (el) cardRefs.current.set(acc.slug, el); else cardRefs.current.delete(acc.slug); }}
                   onClick={() => setSelectedSlug((prev) => (prev === acc.slug ? null : acc.slug))}
                   className={`bg-white rounded-xl overflow-hidden border transition-all cursor-pointer ${
-                    selectedSlug === acc.slug ? "border-primary shadow-md" : inPlan ? "border-primary/30" : "border-outline-variant/10 hover:shadow-sm"
+                    selectedSlug === acc.slug ? "border-primary shadow-md" : isPlanned ? "border-primary/30" : "border-outline-variant/10 hover:shadow-sm"
                   }`}
                 >
                   <div className="flex min-h-[120px]">
                     {/* Image */}
                     <Link href={`/property/${acc.slug}`} className="w-28 shrink-0 overflow-hidden relative">
                       <img className="w-full h-full object-cover" alt={acc.name} src={acc.image} />
-                      {inPlan && (
+                      {plannedStop && (
                         <span className="absolute top-1.5 left-1.5 bg-primary text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                          Night {planEntry!.night}
+                          Night {plannedStop.day}
                         </span>
                       )}
                     </Link>
@@ -351,13 +381,34 @@ export default function SearchLayout({
                       </div>
                       <div className="flex items-center justify-between mt-1">
                         <span className="text-[10px] font-bold text-secondary uppercase">{acc.typeLabel}</span>
-                        <button
-                          onClick={(e) => { e.preventDefault(); togglePlan(acc.slug); }}
-                          className={`flex items-center gap-1 text-[11px] font-bold transition-colors ${inPlan ? "text-primary" : "text-secondary hover:text-primary"}`}
-                        >
-                          <span className="material-symbols-outlined text-sm">{inPlan ? "check_circle" : "add_circle_outline"}</span>
-                          {inPlan ? `Night ${planEntry!.night}` : "Plan"}
-                        </button>
+                        {isPlanned ? (
+                          <span className="flex items-center gap-1 text-[11px] font-bold text-primary">
+                            <span className="material-symbols-outlined text-sm">check_circle</span>
+                            Night {plannedStop?.day}
+                          </span>
+                        ) : hasPlan && matchingNights.length === 1 ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); assignAccommodation(matchingNights[0].day, acc); }}
+                            className="flex items-center gap-1 text-[11px] font-bold text-secondary hover:text-primary transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-sm">add_circle_outline</span>
+                            Night {matchingNights[0].day}
+                          </button>
+                        ) : hasPlan && matchingNights.length > 1 ? (
+                          <select
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => { if (e.target.value) assignAccommodation(parseInt(e.target.value), acc); }}
+                            defaultValue=""
+                            className="text-[11px] font-bold text-secondary bg-transparent cursor-pointer"
+                          >
+                            <option value="" disabled>+ Add to night...</option>
+                            {matchingNights.map(s => (
+                              <option key={s.day} value={s.day}>Night {s.day}</option>
+                            ))}
+                          </select>
+                        ) : hasPlan ? (
+                          <span className="text-[10px] text-secondary/50">No matching night</span>
+                        ) : null}
                       </div>
                     </div>
                   </div>

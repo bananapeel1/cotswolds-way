@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { PlanState } from "@/lib/plan-engine";
+import type { PlanState, PlannedAccommodation } from "@/lib/plan-engine";
 
 const STORAGE_KEY = "cotswold-plan";
 const DEBOUNCE_MS = 500;
@@ -72,5 +72,14 @@ export function usePlanStorage() {
     setLastSaved(null);
   }, []);
 
-  return { plan, updatePlan, clearPlan, lastSaved, hydrated };
+  const setAccommodation = useCallback((day: number, accommodation: PlannedAccommodation | null) => {
+    setPlan(prev => ({
+      ...prev,
+      stops: prev.stops.map(s =>
+        s.day === day ? { ...s, accommodation: accommodation ?? undefined } : s
+      ),
+    }));
+  }, []);
+
+  return { plan, updatePlan, clearPlan, setAccommodation, lastSaved, hydrated };
 }
