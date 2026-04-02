@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import Link from "next/link";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { VILLAGES, type PlanState, type DayStop } from "@/lib/plan-engine";
 
 interface POI {
   id: number;
@@ -80,6 +82,48 @@ export default function TrailExplorer() {
   const [mobileView, setMobileView] = useState<"list" | "map">("map");
   const [hoveredPoiId, setHoveredPoiId] = useState<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [dayFilter, setDayFilter] = useState<number | null>(null);
+
+  // Load user's walk plan from localStorage
+  interface WalkDay { day: number; from: string; to: string; minLat: number; maxLat: number; }
+  const [walkDays, setWalkDays] = useState<WalkDay[]>([]);
+  const [hasPlan, setHasPlan] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cotswold-plan");
+      if (!raw) return;
+      const stored = JSON.parse(raw);
+      if (stored.version !== 1 || !stored.plan?.stops?.length) return;
+      const plan: PlanState = stored.plan;
+      setHasPlan(true);
+
+      const days: WalkDay[] = [];
+      const dir = plan.direction;
+      for (let i = 0; i < plan.stops.length; i++) {
+        const stop = plan.stops[i];
+        if (stop.restDay || stop.transfer) continue;
+        // Previous village is either the start (index 0) or the previous stop's village
+        const fromVillage = i === 0
+          ? (dir === "north_to_south" ? "Chipping Campden" : "Bath")
+          : plan.stops[i - 1].village;
+        const toVillage = stop.village;
+
+        const fromV = VILLAGES.find((v) => v.name === fromVillage);
+        const toV = VILLAGES.find((v) => v.name === toVillage);
+        if (!fromV || !toV) continue;
+
+        const minLat = Math.min(fromV.lat, toV.lat) - 0.005;
+        const maxLat = Math.max(fromV.lat, toV.lat) + 0.005;
+        days.push({ day: stop.day, from: fromVillage, to: toVillage, minLat, maxLat });
+      }
+      setWalkDays(days);
+    } catch { /* ignore parse errors */ }
+  }, []);
+
+  // Per-type card limit: 15 on full trail view, unlimited when filtered
+  const isFiltered = stageFilter !== null || dayFilter !== null;
+  const cardLimit = isFiltered ? 100 : 15;
 
   // Track desktop breakpoint to avoid hydration mismatch
   useEffect(() => {
@@ -124,19 +168,58 @@ export default function TrailExplorer() {
 
   const activeTypes = useMemo(() => layers.filter((l) => l.enabled).flatMap((l) => l.types), [layers]);
 
+  // Types that get a tighter distance filter to reduce urban clutter
+  const FOOD_TYPES = new Set(["pub", "cafe", "restaurant"]);
+  const FOOD_MAX_DISTANCE = 800; // metres
+
+  // Bath area (lat range) gets extra culling — too many urban cafes/pubs
+  const BATH_MIN_LAT = 51.37;
+  const BATH_MAX_LAT = 51.42;
+
+  /** Score a POI by metadata richness — higher = more useful to walkers */
+  function qualityScore(poi: POI): number {
+    let score = 0;
+    if (poi.tags.opening_hours) score += 3;
+    if (poi.tags.website) score += 2;
+    if (poi.tags.phone) score += 2;
+    if (poi.tags.cuisine) score += 1;
+    // Closer to trail = more relevant
+    if (poi.distanceFromTrail < 200) score += 2;
+    else if (poi.distanceFromTrail < 500) score += 1;
+    return score;
+  }
+
   const visiblePois = useMemo(() => {
-    let filtered = pois.filter((p) => activeTypes.includes(p.type));
+    let filtered = pois.filter((p) => {
+      if (!activeTypes.includes(p.type)) return false;
+      // Tighter radius for food/drink
+      if (FOOD_TYPES.has(p.type) && p.distanceFromTrail > FOOD_MAX_DISTANCE) return false;
+      return true;
+    });
+
+    // In Bath area, keep only top 50% of food POIs by quality score
+    const bathFood = filtered.filter((p) => FOOD_TYPES.has(p.type) && p.latitude >= BATH_MIN_LAT && p.latitude <= BATH_MAX_LAT);
+    if (bathFood.length > 6) {
+      bathFood.sort((a, b) => qualityScore(b) - qualityScore(a));
+      const cutoff = Math.ceil(bathFood.length / 2);
+      const toRemove = new Set(bathFood.slice(cutoff).map((p) => p.id));
+      filtered = filtered.filter((p) => !toRemove.has(p.id));
+    }
 
     if (stageFilter) {
       const range = STAGE_RANGES.find((s) => s.stage === stageFilter);
       if (range) filtered = filtered.filter((p) => p.latitude >= range.minLat && p.latitude <= range.maxLat);
     }
 
-    // Sort by distance from trail
+    if (dayFilter !== null && walkDays.length > 0) {
+      const day = walkDays[dayFilter];
+      if (day) filtered = filtered.filter((p) => p.latitude >= day.minLat && p.latitude <= day.maxLat);
+    }
+
     filtered.sort((a, b) => a.distanceFromTrail - b.distanceFromTrail);
 
     return filtered;
-  }, [pois, activeTypes, stageFilter]);
+  }, [pois, activeTypes, stageFilter, dayFilter, walkDays]);
 
   const poisByType = useMemo(() => {
     const groups: Record<string, POI[]> = {};
@@ -212,8 +295,7 @@ export default function TrailExplorer() {
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = new Map();
 
-    const toRender = visiblePois.slice(0, 500);
-    for (const poi of toRender) {
+    for (const poi of visiblePois) {
       const layerConfig = layers.find((l) => l.types.includes(poi.type));
       if (!layerConfig) continue;
 
@@ -254,13 +336,16 @@ export default function TrailExplorer() {
 
   useEffect(() => {
     if (!map.current || !mapReady) return;
-    if (stageFilter) {
+    if (dayFilter !== null && walkDays[dayFilter]) {
+      const day = walkDays[dayFilter];
+      map.current.fitBounds([[-2.45, day.minLat - 0.01], [-1.75, day.maxLat + 0.01]], { padding: 40, duration: 1000 });
+    } else if (stageFilter) {
       const range = STAGE_RANGES.find((s) => s.stage === stageFilter);
       if (range) map.current.fitBounds([[-2.45, range.minLat - 0.01], [-1.75, range.maxLat + 0.01]], { padding: 40, duration: 1000 });
     } else {
       map.current.flyTo({ center: TRAIL_CENTER, zoom: 9, pitch: 15, duration: 1000 });
     }
-  }, [stageFilter, mapReady]);
+  }, [stageFilter, dayFilter, walkDays, mapReady]);
 
   const toggleLayer = (layerId: string) => { setLayers((prev) => prev.map((l) => (l.id === layerId ? { ...l, enabled: !l.enabled } : l))); };
   const flyTo = (poi: POI) => { map.current?.flyTo({ center: [poi.longitude, poi.latitude], zoom: 15, pitch: 30, duration: 800 }); };
@@ -300,20 +385,49 @@ export default function TrailExplorer() {
               className="w-full flex items-center justify-between px-3 py-2.5 bg-surface-container-low rounded-lg border border-outline-variant/20 text-sm text-primary">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-sm text-secondary">route</span>
-                <span className="truncate">{stageFilter ? `Stage ${stageFilter}: ${STAGE_RANGES[stageFilter - 1]?.label}` : "Full trail"}</span>
+                <span className="truncate">{
+                dayFilter !== null && walkDays[dayFilter]
+                  ? `Day ${walkDays[dayFilter].day}: ${walkDays[dayFilter].from} → ${walkDays[dayFilter].to}`
+                  : stageFilter ? `Stage ${stageFilter}: ${STAGE_RANGES[stageFilter - 1]?.label}`
+                  : "Full trail"
+              }</span>
               </div>
               <span className={`material-symbols-outlined text-sm text-secondary transition-transform ${stageOpen ? "rotate-180" : ""}`}>keyboard_arrow_down</span>
             </button>
             {stageOpen && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-outline-variant/20 py-1 z-30 max-h-72 overflow-y-auto">
-                <button onClick={() => { setStageFilter(null); setStageOpen(false); }}
-                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-high ${!stageFilter ? "text-primary font-bold bg-primary/5" : "text-secondary"}`}>Full trail</button>
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-outline-variant/20 py-1 z-30 max-h-80 overflow-y-auto">
+                <button onClick={() => { setStageFilter(null); setDayFilter(null); setStageOpen(false); }}
+                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-high ${!stageFilter && dayFilter === null ? "text-primary font-bold bg-primary/5" : "text-secondary"}`}>Full trail</button>
+
+                <p className="px-4 pt-3 pb-1 text-[9px] font-bold text-secondary uppercase tracking-widest">Trail Stages</p>
                 {STAGE_RANGES.map((s) => (
-                  <button key={s.stage} onClick={() => { setStageFilter(s.stage); setStageOpen(false); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-high ${stageFilter === s.stage ? "text-primary font-bold bg-primary/5" : "text-secondary"}`}>
+                  <button key={s.stage} onClick={() => { setStageFilter(s.stage); setDayFilter(null); setStageOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-high ${stageFilter === s.stage && dayFilter === null ? "text-primary font-bold bg-primary/5" : "text-secondary"}`}>
                     Stage {s.stage}: {s.label}
                   </button>
                 ))}
+
+                <div className="border-t border-outline-variant/10 mt-1 pt-1">
+                  <p className="px-4 pt-2 pb-1 text-[9px] font-bold text-tertiary uppercase tracking-widest flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[10px]">hiking</span> My Walk
+                  </p>
+                  {walkDays.length > 0 ? (
+                    walkDays.map((wd, idx) => (
+                      <button key={idx} onClick={() => { setDayFilter(idx); setStageFilter(null); setStageOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-surface-container-high ${dayFilter === idx ? "text-primary font-bold bg-primary/5" : "text-secondary"}`}>
+                        Day {wd.day}: {wd.from} → {wd.to}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3">
+                      <p className="text-xs text-secondary mb-1.5">Plan your walk to filter by day</p>
+                      <Link href="/plan" onClick={() => setStageOpen(false)}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-tertiary transition-colors">
+                        <span className="material-symbols-outlined text-sm">arrow_forward</span> Create a plan
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -368,25 +482,53 @@ export default function TrailExplorer() {
                       <span className="text-[10px] text-secondary font-bold">{typePois.length}</span>
                     </div>
                   </div>
-                  {typePois.slice(0, 30).map((poi) => (
-                    <button
-                      key={poi.id}
-                      ref={(el) => { if (el) cardRefsMap.current.set(poi.id, el); else cardRefsMap.current.delete(poi.id); }}
-                      onClick={() => flyTo(poi)}
-                      onMouseEnter={() => setHoveredPoiId(poi.id)}
-                      onMouseLeave={() => setHoveredPoiId(null)}
-                      className={`w-full flex items-center gap-3 px-5 py-2.5 border-b border-outline-variant/5 hover:bg-surface-container-low transition-colors text-left ${
-                        hoveredPoiId === poi.id ? "bg-primary/5" : ""
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-primary truncate">{poi.name}</p>
-                        <p className="text-[10px] text-secondary mt-0.5">{formatDistance(poi.distanceFromTrail)}</p>
-                      </div>
-                      <span className="material-symbols-outlined text-xs text-secondary shrink-0">chevron_right</span>
-                    </button>
-                  ))}
-                  {typePois.length > 30 && <p className="px-5 py-2 text-[10px] text-secondary">+ {typePois.length - 30} more</p>}
+                  {typePois.slice(0, cardLimit).map((poi) => {
+                    const hours = poi.tags.opening_hours || null;
+                    const cuisine = poi.tags.cuisine || null;
+                    const phone = poi.tags.phone || null;
+                    const website = poi.tags.website || null;
+                    const hasExtra = hours || cuisine;
+                    return (
+                      <button
+                        key={poi.id}
+                        ref={(el) => { if (el) cardRefsMap.current.set(poi.id, el); else cardRefsMap.current.delete(poi.id); }}
+                        onClick={() => flyTo(poi)}
+                        onMouseEnter={() => setHoveredPoiId(poi.id)}
+                        onMouseLeave={() => setHoveredPoiId(null)}
+                        className={`w-full flex items-center gap-3 px-5 py-2.5 border-b border-outline-variant/5 hover:bg-surface-container-low transition-colors text-left ${
+                          hoveredPoiId === poi.id ? "bg-primary/5" : ""
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-primary truncate">{poi.name}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-secondary">{formatDistance(poi.distanceFromTrail)}</span>
+                            {cuisine && <span className="text-[10px] text-secondary/70 truncate">· {cuisine.replace(/;/g, ", ")}</span>}
+                          </div>
+                          {hours && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="material-symbols-outlined text-[10px] text-secondary/60">schedule</span>
+                              <span className="text-[10px] text-secondary/70 truncate">{hours}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {phone && (
+                            <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} className="p-1 rounded-full hover:bg-primary/10 transition-colors" title={phone}>
+                              <span className="material-symbols-outlined text-sm text-secondary">call</span>
+                            </a>
+                          )}
+                          {website && (
+                            <a href={website} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 rounded-full hover:bg-primary/10 transition-colors" title="Website">
+                              <span className="material-symbols-outlined text-sm text-secondary">open_in_new</span>
+                            </a>
+                          )}
+                          <span className="material-symbols-outlined text-xs text-secondary">chevron_right</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {typePois.length > cardLimit && <p className="px-5 py-2 text-[10px] text-secondary">+ {typePois.length - cardLimit} more</p>}
                 </div>
               );
             })

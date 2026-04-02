@@ -74,6 +74,16 @@ export default function SearchLayout({
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const [panelWidth, setPanelWidth] = useState(420);
   const isDragging = useRef(false);
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Scroll sidebar card into view when a marker is selected
+  useEffect(() => {
+    if (!selectedSlug) return;
+    const card = cardRefs.current.get(selectedSlug);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [selectedSlug]);
   const handleMouseDown = useCallback(() => { isDragging.current = true; }, []);
 
   useEffect(() => {
@@ -292,7 +302,9 @@ export default function SearchLayout({
               const inPlan = !!planEntry;
               return (
                 <div key={acc.slug}
-                  className={`bg-white rounded-xl overflow-hidden border transition-all ${
+                  ref={(el) => { if (el) cardRefs.current.set(acc.slug, el); else cardRefs.current.delete(acc.slug); }}
+                  onClick={() => setSelectedSlug((prev) => (prev === acc.slug ? null : acc.slug))}
+                  className={`bg-white rounded-xl overflow-hidden border transition-all cursor-pointer ${
                     selectedSlug === acc.slug ? "border-primary shadow-md" : inPlan ? "border-primary/30" : "border-outline-variant/10 hover:shadow-sm"
                   }`}
                 >
