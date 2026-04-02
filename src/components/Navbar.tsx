@@ -9,6 +9,7 @@ const mainLinks = [
   { href: "/search", label: "Explore Stays", icon: "bed" },
   { href: "/plan", label: "Plan My Hike", icon: "hiking" },
   { href: "/explore", label: "Trail Explorer", icon: "explore" },
+  { href: "/my-trip", label: "My Trip", icon: "luggage", requiresPlan: true },
 ];
 
 const trailLinks = [
@@ -20,8 +21,19 @@ const trailLinks = [
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [trailDropdownOpen, setTrailDropdownOpen] = useState(false);
+  const [hasPlan, setHasPlan] = useState(false);
   const pathname = usePathname();
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cotswold-plan");
+      if (raw) {
+        const stored = JSON.parse(raw);
+        setHasPlan(stored?.plan?.stops?.length > 0);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -49,7 +61,7 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden lg:flex items-center gap-6">
-          {mainLinks.map((link) => (
+          {mainLinks.filter(l => !l.requiresPlan || hasPlan).map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -151,7 +163,7 @@ export default function Navbar() {
           </div>
 
           <div className="flex flex-col px-6 overflow-y-auto flex-1 min-h-0 py-2">
-            {mainLinks.map((link) => (
+            {mainLinks.filter(l => !l.requiresPlan || hasPlan).map((link) => (
               <MobileNavLink key={link.href} href={link.href} icon={link.icon} label={link.label} onClick={() => setMobileMenuOpen(false)} />
             ))}
 

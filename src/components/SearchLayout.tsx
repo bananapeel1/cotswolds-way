@@ -5,7 +5,8 @@ import Link from "next/link";
 import TrailMap from "@/components/TrailMap";
 import type { MapProperty } from "@/components/TrailMap";
 import { usePlanStorage } from "@/hooks/usePlanStorage";
-import type { PlannedAccommodation } from "@/lib/plan-engine";
+import { useWishlistStorage } from "@/hooks/useWishlistStorage";
+import { villageToStages } from "@/lib/plan-engine";
 
 interface AccommodationCard {
   slug: string;
@@ -63,9 +64,8 @@ export default function SearchLayout({
   mapProperties: MapProperty[];
   initialDay?: number;
 }) {
-
-  // Shared plan from localStorage
   const { plan, setAccommodation, hydrated } = usePlanStorage();
+  const { items: wishlistItems, addItem: addWishlistItem, removeItem: removeWishlistItem, clearWishlist, hydrated: wishlistHydrated } = useWishlistStorage();
 
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
@@ -75,22 +75,19 @@ export default function SearchLayout({
   const listRef = useRef<HTMLDivElement>(null);
   const [planOpen, setPlanOpen] = useState(true);
 
-  // Scroll selected card to the top of the list with fast eased animation
+  // Scroll selected card to the top of the list
   useEffect(() => {
     if (!selectedSlug) return;
     const card = cardRefs.current.get(selectedSlug);
     const list = listRef.current;
     if (!card || !list) return;
-
     const targetTop = card.offsetTop - list.offsetTop - 8;
     const startTop = list.scrollTop;
     const distance = targetTop - startTop;
     if (Math.abs(distance) < 2) return;
-
     const duration = 300;
     const start = performance.now();
     const ease = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-
     function step(now: number) {
       const elapsed = now - start;
       const progress = Math.min(elapsed / duration, 1);
@@ -101,7 +98,6 @@ export default function SearchLayout({
   }, [selectedSlug]);
 
   const handleMouseDown = useCallback(() => { isDragging.current = true; }, []);
-
   useEffect(() => {
     const onMove = (e: MouseEvent) => { if (isDragging.current) setPanelWidth(Math.max(300, Math.min(600, e.clientX))); };
     const onUp = () => { isDragging.current = false; };
@@ -110,7 +106,6 @@ export default function SearchLayout({
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, []);
 
-  // Filters
   const [propertyType, setPropertyType] = useState<PropertyTypeFilter>(null);
   const [dogFriendly, setDogFriendly] = useState(false);
   const [stageFilter, setStageFilter] = useState<number | null>(null);
@@ -124,10 +119,10 @@ export default function SearchLayout({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Derive plan-aware data
+  // Plan-aware data
   const hasPlan = plan.stops.length > 0;
   const nightStops = useMemo(() =>
-    plan.stops.filter(s => !s.restDay).slice(0, -1), // exclude final arrival day
+    plan.stops.filter(s => !s.restDay).slice(0, -1),
     [plan.stops]
   );
   const bookedNights = useMemo(() => nightStops.filter(s => s.accommodation).length, [nightStops]);
@@ -136,10 +131,16 @@ export default function SearchLayout({
     [plan.stops]
   );
   const plannedSlugSet = useMemo(() => new Set(planSlugs), [planSlugs]);
+  const wishlistSlugSet = useMemo(() => new Set(wishlistItems.map(i => i.slug)), [wishlistItems]);
 
-  // Find matching unbooked nights for an accommodation card
+  // Stage-based matching: find unbooked nights whose village stage overlaps the accommodation's stage
   const getMatchingNights = useCallback((acc: AccommodationCard) => {
-    return nightStops.filter(s => !s.accommodation && s.village === acc.village);
+    if (!acc.trailStage) return [];
+    return nightStops.filter(s => {
+      if (s.accommodation) return false;
+      const stages = villageToStages(s.village);
+      return stages.includes(acc.trailStage!);
+    });
   }, [nightStops]);
 
   const assignAccommodation = useCallback((day: number, acc: AccommodationCard) => {
@@ -152,9 +153,21 @@ export default function SearchLayout({
     });
   }, [setAccommodation]);
 
-  // Highlighted day from URL param
-  const [highlightDay, setHighlightDay] = useState<number | null>(initialDay ?? null);
+  const toggleWishlist = useCallback((acc: AccommodationCard) => {
+    if (wishlistSlugSet.has(acc.slug)) {
+      removeWishlistItem(acc.slug);
+    } else {
+      addWishlistItem({
+        slug: acc.slug,
+        name: acc.name,
+        village: acc.village || "",
+        propertyType: acc.propertyType,
+        image: acc.image,
+      });
+    }
+  }, [wishlistSlugSet, addWishlistItem, removeWishlistItem]);
 
+  const [highlightDay, setHighlightDay] = useState<number | null>(initialDay ?? null);
   const activeFilterCount = [propertyType !== null, dogFriendly, stageFilter !== null].filter(Boolean).length;
   const clearFilters = () => { setPropertyType(null); setDogFriendly(false); setStageFilter(null); };
 
@@ -170,7 +183,7 @@ export default function SearchLayout({
   const filteredSlugs = useMemo(() => new Set(filtered.map((a) => a.slug)), [filtered]);
   const filteredMapProperties = useMemo(() => mapProperties.filter((p) => filteredSlugs.has(p.slug)), [mapProperties, filteredSlugs]);
 
-  if (!hydrated) {
+  if (!hydrated || !wishlistHydrated) {
     return (
       <main className="flex-grow flex items-center justify-center h-[calc(100vh-65px)]">
         <span className="material-symbols-outlined animate-spin text-primary text-2xl">progress_activity</span>
@@ -197,7 +210,7 @@ export default function SearchLayout({
         className={`bg-surface flex flex-col overflow-hidden ${mobileView === "map" ? "hidden lg:flex" : "flex"} w-full lg:w-auto shrink-0`}
         style={{ width: isDesktop ? `${panelWidth}px` : undefined }}
       >
-        {/* My Plan — sticky top */}
+        {/* Top panel — My Plan / Wishlist / Prompt */}
         <div className="bg-primary/5 border-b border-primary/10 shrink-0">
           {hasPlan ? (
             <>
@@ -228,18 +241,14 @@ export default function SearchLayout({
                               <p className="text-xs font-bold text-primary truncate">{stop.accommodation.name}</p>
                               <p className="text-[9px] text-secondary">{stop.village}</p>
                             </div>
-                            <button
-                              onClick={() => setAccommodation(stop.day, null)}
-                              className="text-secondary hover:text-red-500 shrink-0"
-                              title="Remove stay"
-                            >
+                            <button onClick={() => setAccommodation(stop.day, null)}
+                              className="text-secondary hover:text-red-500 shrink-0" title="Remove stay">
                               <span className="material-symbols-outlined text-sm">close</span>
                             </button>
                           </>
                         ) : (
                           <button
                             onClick={() => {
-                              // Filter to the stage containing this village
                               const match = accommodations.find(a => a.village === stop.village);
                               if (match?.trailStage) setStageFilter(match.trailStage);
                               setHighlightDay(stop.day);
@@ -253,17 +262,50 @@ export default function SearchLayout({
                       </div>
                     );
                   })}
-                  {/* Progress bar */}
                   {nightStops.length > 0 && (
                     <div className="mt-2">
                       <div className="h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${(bookedNights / nightStops.length) * 100}%` }}
-                        />
+                        <div className="h-full bg-primary rounded-full transition-all"
+                          style={{ width: `${(bookedNights / nightStops.length) * 100}%` }} />
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+            </>
+          ) : wishlistItems.length > 0 ? (
+            <>
+              <button onClick={() => setPlanOpen(!planOpen)}
+                className="w-full flex items-center justify-between px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-base text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                  <span className="text-sm font-bold text-primary">My Wishlist</span>
+                  <span className="text-[10px] font-bold text-secondary">{wishlistItems.length} saved</span>
+                </div>
+                <span className={`material-symbols-outlined text-sm text-primary transition-transform ${planOpen ? "rotate-180" : ""}`}>keyboard_arrow_down</span>
+              </button>
+              {planOpen && (
+                <div className="px-5 pb-4 space-y-1.5">
+                  {wishlistItems.map((item) => (
+                    <div key={item.slug} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2">
+                      {item.image && <img src={item.image} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />}
+                      <div className="min-w-0 flex-grow">
+                        <p className="text-xs font-bold text-primary truncate">{item.name}</p>
+                        <p className="text-[9px] text-secondary capitalize">{item.village} · {item.propertyType}</p>
+                      </div>
+                      <button onClick={() => removeWishlistItem(item.slug)}
+                        className="text-secondary hover:text-red-500 shrink-0">
+                        <span className="material-symbols-outlined text-sm">close</span>
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-3 pt-2">
+                    <Link href="/plan"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-tertiary transition-colors">
+                      <span className="material-symbols-outlined text-sm">arrow_forward</span> Build a plan from these
+                    </Link>
+                    <button onClick={clearWishlist} className="text-[10px] text-secondary hover:text-red-500 transition-colors">Clear</button>
+                  </div>
                 </div>
               )}
             </>
@@ -273,7 +315,7 @@ export default function SearchLayout({
                 <span className="material-symbols-outlined text-base text-primary">checklist</span>
                 <span className="text-sm font-bold text-primary">My Plan</span>
               </div>
-              <p className="text-xs text-secondary mb-2">Plan your walk to assign stays to each night</p>
+              <p className="text-xs text-secondary mb-2">Plan your walk to assign stays, or save favourites below</p>
               <Link href="/plan" className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-tertiary transition-colors">
                 <span className="material-symbols-outlined text-sm">arrow_forward</span> Create a plan
               </Link>
@@ -290,7 +332,6 @@ export default function SearchLayout({
             <span className="text-xs font-label text-secondary">{filtered.length} stays</span>
           </div>
 
-          {/* Stage selector */}
           <div className="relative mb-3">
             <button onClick={() => setStageOpen(!stageOpen)}
               className="w-full flex items-center justify-between px-3 py-2.5 bg-surface-container-low rounded-lg border border-outline-variant/20 text-sm text-primary">
@@ -312,7 +353,6 @@ export default function SearchLayout({
             )}
           </div>
 
-          {/* Type pills + dog filter */}
           <div className="flex gap-1.5 overflow-x-auto pb-2 no-scrollbar">
             {TYPE_OPTIONS.map((opt) => (
               <button key={opt.label} onClick={() => setPropertyType(opt.value)}
@@ -347,16 +387,16 @@ export default function SearchLayout({
               const isPlanned = plannedSlugSet.has(acc.slug);
               const plannedStop = isPlanned ? plan.stops.find(s => s.accommodation?.slug === acc.slug) : null;
               const matchingNights = hasPlan ? getMatchingNights(acc) : [];
+              const isWishlisted = wishlistSlugSet.has(acc.slug);
               return (
                 <div key={acc.slug}
                   ref={(el) => { if (el) cardRefs.current.set(acc.slug, el); else cardRefs.current.delete(acc.slug); }}
                   onClick={() => setSelectedSlug((prev) => (prev === acc.slug ? null : acc.slug))}
                   className={`bg-white rounded-xl overflow-hidden border transition-all cursor-pointer ${
-                    selectedSlug === acc.slug ? "border-primary shadow-md" : isPlanned ? "border-primary/30" : "border-outline-variant/10 hover:shadow-sm"
+                    selectedSlug === acc.slug ? "border-primary shadow-md" : isPlanned ? "border-primary/30" : isWishlisted ? "border-tertiary/30" : "border-outline-variant/10 hover:shadow-sm"
                   }`}
                 >
                   <div className="flex min-h-[120px]">
-                    {/* Image */}
                     <Link href={`/property/${acc.slug}`} className="w-28 shrink-0 overflow-hidden relative">
                       <img className="w-full h-full object-cover" alt={acc.name} src={acc.image} />
                       {plannedStop && (
@@ -365,7 +405,6 @@ export default function SearchLayout({
                         </span>
                       )}
                     </Link>
-                    {/* Info */}
                     <div className="flex-grow p-3 flex flex-col justify-between min-w-0">
                       <div>
                         <Link href={`/property/${acc.slug}`}>
@@ -406,8 +445,14 @@ export default function SearchLayout({
                               <option key={s.day} value={s.day}>Night {s.day}</option>
                             ))}
                           </select>
-                        ) : hasPlan ? (
-                          <span className="text-[10px] text-secondary/50">No matching night</span>
+                        ) : !hasPlan ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleWishlist(acc); }}
+                            className={`flex items-center gap-1 text-[11px] font-bold transition-colors ${isWishlisted ? "text-tertiary" : "text-secondary hover:text-tertiary"}`}
+                          >
+                            <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: isWishlisted ? "'FILL' 1" : "'FILL' 0" }}>favorite</span>
+                            {isWishlisted ? "Saved" : "Save"}
+                          </button>
                         ) : null}
                       </div>
                     </div>
@@ -419,7 +464,7 @@ export default function SearchLayout({
         </div>
       </section>
 
-      {/* Draggable resizer — desktop only */}
+      {/* Draggable resizer */}
       <div
         onMouseDown={handleMouseDown}
         className="hidden lg:flex items-center justify-center w-2 bg-outline-variant/10 hover:bg-primary/20 cursor-col-resize transition-colors shrink-0 group"

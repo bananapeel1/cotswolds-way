@@ -6,14 +6,17 @@ import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
   autoStops, computeConnections, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
+  encodePlanToURL, planFromWishlist,
   type DayStop,
 } from "@/lib/plan-engine";
+import { useWishlistStorage } from "@/hooks/useWishlistStorage";
 import ElevationProfile from "@/components/plan/ElevationProfile";
 import WalkScoreGauge from "@/components/plan/WalkScoreGauge";
 import PubLunchCard from "@/components/plan/PubLunchCard";
 import CostEstimator from "@/components/plan/CostEstimator";
 import GPXExportButton from "@/components/plan/GPXExportButton";
 import PrintableDayCards from "@/components/plan/PrintableDayCards";
+import SavedPoisList from "@/components/plan/SavedPoisList";
 import CustomisePanel from "@/components/plan/CustomisePanel";
 
 interface POI {
@@ -30,7 +33,8 @@ const DIFFICULTY_COLOUR: Record<string, string> = {
 };
 
 export default function TripPlanner() {
-  const { plan, updatePlan, setAccommodation, lastSaved, hydrated } = usePlanStorage();
+  const { plan, updatePlan, setAccommodation, removePoi, lastSaved, hydrated } = usePlanStorage();
+  const { items: wishlistItems, clearWishlist } = useWishlistStorage();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [pois, setPois] = useState<POI[]>([]);
   const [highlightDays, setHighlightDays] = useState<number[]>([]);
@@ -224,6 +228,31 @@ export default function TripPlanner() {
             </div>
           </div>
 
+          {/* Wishlist banner */}
+          {wishlistItems.length > 0 && (
+            <div className="bg-tertiary/5 border border-tertiary/20 rounded-2xl p-5 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="material-symbols-outlined text-base text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                <p className="text-sm font-bold text-primary">Build around your saved stays</p>
+              </div>
+              <p className="text-xs text-secondary mb-3">
+                You saved {wishlistItems.length} {wishlistItems.length === 1 ? "property" : "properties"} — {wishlistItems.map(i => i.village).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+              </p>
+              <button
+                onClick={() => {
+                  const newStops = planFromWishlist(wishlistItems, plan.direction);
+                  updatePlan({ stops: newStops, days: newStops.length });
+                  clearWishlist();
+                  setStep(2);
+                }}
+                className="bg-tertiary text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-base">auto_awesome</span>
+                Build from wishlist
+              </button>
+            </div>
+          )}
+
           {/* Build route CTA */}
           <button onClick={buildRoute}
             className="w-full bg-primary text-white py-4 rounded-2xl font-bold text-base shadow-lg hover:shadow-xl hover:bg-primary-container transition-all flex items-center justify-center gap-2 group">
@@ -358,12 +387,22 @@ export default function TripPlanner() {
                           </Link>
                         ) : null}
 
+                        {/* Saved POIs */}
+                        {stop.savedPois && stop.savedPois.length > 0 && (
+                          <SavedPoisList pois={stop.savedPois} day={stop.day} onRemove={removePoi} />
+                        )}
+
                         {/* Actions */}
                         <div className="flex items-center gap-4 pt-2">
                           <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
                             className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
                             <span className="material-symbols-outlined text-sm">bed</span>
                             Find stays in {stop.village}
+                          </Link>
+                          <Link href={`/explore`}
+                            className="text-xs font-bold text-secondary hover:text-primary hover:underline flex items-center gap-1">
+                            <span className="material-symbols-outlined text-sm">explore</span>
+                            Explore POIs
                           </Link>
                           <GPXExportButton
                             dayNumber={stop.day}
@@ -397,10 +436,9 @@ export default function TripPlanner() {
               Customise
             </button>
             <button onClick={() => {
-              const url = new URL(window.location.href);
-              url.searchParams.set("stops", stops.map(s => s.village).join(","));
-              url.searchParams.set("days", plan.days.toString());
-              url.searchParams.set("dir", plan.direction);
+              const url = new URL(window.location.origin + "/my-trip");
+              const params = encodePlanToURL(plan);
+              params.forEach((v, k) => url.searchParams.set(k, v));
               navigator.clipboard.writeText(url.toString());
               setShareToast(true);
               setTimeout(() => setShareToast(false), 2000);

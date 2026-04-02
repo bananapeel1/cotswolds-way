@@ -19,6 +19,14 @@ export interface PlannedAccommodation {
   image?: string;        // thumbnail URL
 }
 
+export interface SavedPOI {
+  id: number;
+  name: string;
+  type: string;          // pub, cafe, water, toilets, etc.
+  latitude: number;
+  longitude: number;
+}
+
 export interface DayStop {
   day: number;
   village: string;
@@ -30,6 +38,7 @@ export interface DayStop {
   restDay?: boolean;    // rest day, 0 miles, same village
   note?: string;        // user note for this stop
   accommodation?: PlannedAccommodation; // assigned stay for this night
+  savedPois?: SavedPOI[];              // bookmarked POIs for this day
 }
 
 export interface Connection {
@@ -187,6 +196,172 @@ const DIFFICULTY_MAP: Record<string, "easy" | "moderate" | "strenuous"> = {
 };
 
 const DIFFICULTY_FACTOR = { easy: 0.8, moderate: 1.0, strenuous: 1.3 };
+
+// ─── Stage Mapping ─────────────────────────────────────────────────────────
+
+/** Mile ranges for each trail stage (1-indexed) */
+export const STAGE_MILE_RANGES: [number, number][] = [
+  [0, 10], [10, 20], [20, 33], [33, 40],
+  [40, 49], [49, 63], [63, 80], [80, 102],
+];
+
+/** Map a village name to trail stage numbers (with overlap for boundary villages) */
+export function villageToStages(villageName: string, overlap = 2): number[] {
+  const v = VILLAGES.find(x => x.name === villageName);
+  if (!v) return [];
+  const mile = v.mile;
+  const stages: number[] = [];
+  STAGE_MILE_RANGES.forEach(([min, max], i) => {
+    if (mile >= min - overlap && mile <= max + overlap) stages.push(i + 1);
+  });
+  return stages;
+}
+
+// ─── Wishlist → Plan ───────────────────────────────────────────────────────
+
+export interface WishlistItem {
+  slug: string;
+  name: string;
+  village: string;
+  propertyType: string;
+  image?: string;
+}
+
+/** Build a plan from wishlisted stays — orders them along the trail and fills gaps */
+export function planFromWishlist(
+  items: WishlistItem[],
+  direction: "north_to_south" | "south_to_north"
+): DayStop[] {
+  // Map wishlist items to villages with mile markers
+  const mapped = items
+    .map(item => ({ item, village: VILLAGES.find(v => v.name === item.village) }))
+    .filter((x): x is { item: WishlistItem; village: Village } => !!x.village)
+    .sort((a, b) => direction === "north_to_south"
+      ? a.village.mile - b.village.mile
+      : b.village.mile - a.village.mile
+    );
+
+  if (mapped.length === 0) return autoStops(7, direction);
+
+  // Build stops from wishlisted villages
+  const startVillage = direction === "north_to_south" ? "Chipping Campden" : "Bath";
+  const endVillage = direction === "north_to_south" ? "Bath" : "Chipping Campden";
+  const villageNames = mapped.map(m => m.item.village);
+
+  // Ensure the last stop reaches the trail end
+  if (villageNames[villageNames.length - 1] !== endVillage) {
+    villageNames.push(endVillage);
+  }
+
+  const stops: DayStop[] = [];
+  let prevVillageName = startVillage;
+  let cumulative = 0;
+
+  for (let i = 0; i < villageNames.length; i++) {
+    const vName = villageNames[i];
+    const v = VILLAGES.find(x => x.name === vName);
+    const pv = VILLAGES.find(x => x.name === prevVillageName);
+    if (!v || !pv) continue;
+
+    const miles = Math.abs(v.mile - pv.mile);
+    cumulative += miles;
+    const elevFt = findSegmentElevation(prevVillageName, vName);
+    const diff = getDifficulty(miles, elevFt);
+
+    const stop: DayStop = {
+      day: i + 1,
+      village: vName,
+      miles: Math.round(miles * 10) / 10,
+      cumulative: Math.round(cumulative * 10) / 10,
+      difficulty: diff,
+      walkScore: computeWalkScore(miles, elevFt, diff),
+    };
+
+    // Attach accommodation from wishlist if this village has one
+    const wishItem = mapped.find(m => m.item.village === vName);
+    if (wishItem) {
+      stop.accommodation = {
+        slug: wishItem.item.slug,
+        name: wishItem.item.name,
+        village: wishItem.item.village,
+        propertyType: wishItem.item.propertyType,
+        image: wishItem.item.image,
+      };
+    }
+
+    stops.push(stop);
+    prevVillageName = vName;
+  }
+
+  return stops;
+}
+
+// ─── Share Link Encoding ───────────────────────────────────────────────────
+
+/** Encode a plan into compact URL search params */
+export function encodePlanToURL(plan: PlanState): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set("dir", plan.direction === "north_to_south" ? "ns" : "sn");
+  params.set("days", plan.days.toString());
+  params.set("month", plan.month.toString());
+  params.set("stops", plan.stops.map(s => s.village).join(","));
+
+  // Encode accommodation: day:slug pairs
+  const accPairs = plan.stops
+    .filter(s => s.accommodation)
+    .map(s => `${s.day}:${s.accommodation!.slug}`);
+  if (accPairs.length > 0) params.set("acc", accPairs.join(","));
+
+  // Encode saved POIs: day:id.id.id
+  const poiPairs = plan.stops
+    .filter(s => s.savedPois && s.savedPois.length > 0)
+    .map(s => `${s.day}:${s.savedPois!.map(p => p.id).join(".")}`);
+  if (poiPairs.length > 0) params.set("pois", poiPairs.join(","));
+
+  return params;
+}
+
+/** Decode URL params back to partial plan data (slugs/IDs need resolution) */
+export function decodePlanFromURL(params: URLSearchParams): {
+  direction: "north_to_south" | "south_to_north";
+  days: number;
+  month: number;
+  villages: string[];
+  accMap: Map<number, string>;    // day → slug
+  poisMap: Map<number, number[]>; // day → POI IDs
+} | null {
+  const dir = params.get("dir");
+  const days = params.get("days");
+  const stops = params.get("stops");
+  if (!dir || !days || !stops) return null;
+
+  const accMap = new Map<number, string>();
+  const accStr = params.get("acc");
+  if (accStr) {
+    accStr.split(",").forEach(pair => {
+      const [d, slug] = pair.split(":");
+      if (d && slug) accMap.set(parseInt(d), slug);
+    });
+  }
+
+  const poisMap = new Map<number, number[]>();
+  const poisStr = params.get("pois");
+  if (poisStr) {
+    poisStr.split(",").forEach(pair => {
+      const [d, ids] = pair.split(":");
+      if (d && ids) poisMap.set(parseInt(d), ids.split(".").map(Number));
+    });
+  }
+
+  return {
+    direction: dir === "sn" ? "south_to_north" : "north_to_south",
+    days: parseInt(days),
+    month: parseInt(params.get("month") || "4"),
+    villages: stops.split(","),
+    accMap,
+    poisMap,
+  };
+}
 
 // ─── Computation ────────────────────────────────────────────────────────────
 
@@ -440,7 +615,7 @@ function renumberStops(stops: DayStop[], direction: "north_to_south" | "south_to
     }
     const prev = i === 0 ? startVillageName : stops[i - 1].village;
     const rebuilt = buildStop(s.village, prev, i + 1, direction);
-    return { ...rebuilt, note: s.note, restDay: s.restDay, transfer: s.transfer, accommodation: s.accommodation };
+    return { ...rebuilt, note: s.note, restDay: s.restDay, transfer: s.transfer, accommodation: s.accommodation, savedPois: s.savedPois };
   });
 }
 
@@ -547,6 +722,7 @@ export function insertRestDay(stops: DayStop[], afterIndex: number): DayStop[] {
     walkScore: 0,
     restDay: true,
     accommodation: prevStop.accommodation,
+    savedPois: prevStop.savedPois,
   };
 
   const newStops = [...stops.slice(0, afterIndex + 1), restStop, ...stops.slice(afterIndex + 1)];

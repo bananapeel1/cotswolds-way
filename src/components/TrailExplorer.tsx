@@ -86,7 +86,7 @@ export default function TrailExplorer() {
   const [dayFilter, setDayFilter] = useState<number | null>(null);
 
   // Shared plan from localStorage
-  const { plan, hydrated } = usePlanStorage();
+  const { plan, savePoi, removePoi, hydrated } = usePlanStorage();
 
   interface WalkDay { day: number; from: string; to: string; minLat: number; maxLat: number; accommodation?: PlannedAccommodation; }
 
@@ -116,6 +116,14 @@ export default function TrailExplorer() {
   // Per-type card limit: 15 on full trail view, unlimited when filtered
   const isFiltered = stageFilter !== null || dayFilter !== null;
   const cardLimit = isFiltered ? 100 : 15;
+
+  // Saved POI IDs for the active day (for bookmark state)
+  const savedPoiIds = useMemo(() => {
+    if (dayFilter === null || !walkDays[dayFilter]) return new Set<number>();
+    const day = walkDays[dayFilter].day;
+    const stop = plan.stops.find(s => s.day === day);
+    return new Set((stop?.savedPois || []).map(p => p.id));
+  }, [dayFilter, walkDays, plan.stops]);
 
   // Track desktop breakpoint to avoid hydration mismatch
   useEffect(() => {
@@ -535,6 +543,26 @@ export default function TrailExplorer() {
                             <a href={website} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 rounded-full hover:bg-primary/10 transition-colors" title="Website">
                               <span className="material-symbols-outlined text-sm text-secondary">open_in_new</span>
                             </a>
+                          )}
+                          {dayFilter !== null && walkDays[dayFilter] && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const day = walkDays[dayFilter!].day;
+                                if (savedPoiIds.has(poi.id)) {
+                                  removePoi(day, poi.id);
+                                } else {
+                                  savePoi(day, { id: poi.id, name: poi.name, type: poi.type, latitude: poi.latitude, longitude: poi.longitude });
+                                }
+                              }}
+                              className="p-1 rounded-full hover:bg-primary/10 transition-colors"
+                              title={savedPoiIds.has(poi.id) ? "Remove from plan" : "Save to plan"}
+                            >
+                              <span className="material-symbols-outlined text-sm text-primary"
+                                style={{ fontVariationSettings: savedPoiIds.has(poi.id) ? "'FILL' 1" : "'FILL' 0" }}>
+                                bookmark
+                              </span>
+                            </button>
                           )}
                           <span className="material-symbols-outlined text-xs text-secondary">chevron_right</span>
                         </div>

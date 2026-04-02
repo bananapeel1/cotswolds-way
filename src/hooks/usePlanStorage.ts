@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { PlanState, PlannedAccommodation } from "@/lib/plan-engine";
+import type { PlanState, PlannedAccommodation, SavedPOI } from "@/lib/plan-engine";
 
 const STORAGE_KEY = "cotswold-plan";
 const DEBOUNCE_MS = 500;
@@ -81,5 +81,27 @@ export function usePlanStorage() {
     }));
   }, []);
 
-  return { plan, updatePlan, clearPlan, setAccommodation, lastSaved, hydrated };
+  const savePoi = useCallback((day: number, poi: SavedPOI) => {
+    setPlan(prev => ({
+      ...prev,
+      stops: prev.stops.map(s => {
+        if (s.day !== day) return s;
+        const existing = s.savedPois || [];
+        if (existing.some(p => p.id === poi.id)) return s; // dedup
+        return { ...s, savedPois: [...existing, poi] };
+      }),
+    }));
+  }, []);
+
+  const removePoi = useCallback((day: number, poiId: number) => {
+    setPlan(prev => ({
+      ...prev,
+      stops: prev.stops.map(s => {
+        if (s.day !== day) return s;
+        return { ...s, savedPois: (s.savedPois || []).filter(p => p.id !== poiId) };
+      }),
+    }));
+  }, []);
+
+  return { plan, updatePlan, clearPlan, setAccommodation, savePoi, removePoi, lastSaved, hydrated };
 }
