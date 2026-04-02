@@ -526,7 +526,7 @@ export default function TrailExplorer() {
                       <div
                         key={poi.id}
                         ref={(el) => { if (el) cardRefsMap.current.set(poi.id, el); else cardRefsMap.current.delete(poi.id); }}
-                        onClick={() => { flyTo(poi); setPopoverPoiId(null); }}
+                        onClick={() => { flyTo(poi); setPendingBookmarkPoi(null); }}
                         onMouseEnter={() => setHoveredPoiId(poi.id)}
                         onMouseLeave={() => setHoveredPoiId(null)}
                         role="button"
