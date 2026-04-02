@@ -70,7 +70,7 @@ export default function TrailExplorer() {
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
   const resizerRef = useRef<HTMLDivElement>(null);
-  const cardRefsMap = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const cardRefsMap = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const [pois, setPois] = useState<POI[]>([]);
   const [layers, setLayers] = useState<LayerConfig[]>(INITIAL_LAYERS);
