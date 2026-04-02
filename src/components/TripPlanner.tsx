@@ -12,6 +12,7 @@ import {
 import { useWishlistStorage } from "@/hooks/useWishlistStorage";
 import ElevationProfile from "@/components/plan/ElevationProfile";
 import WalkScoreGauge from "@/components/plan/WalkScoreGauge";
+import MiniElevation from "@/components/plan/MiniElevation";
 import PubLunchCard from "@/components/plan/PubLunchCard";
 import CostEstimator from "@/components/plan/CostEstimator";
 import GPXExportButton from "@/components/plan/GPXExportButton";
@@ -40,6 +41,7 @@ export default function TripPlanner() {
   const [highlightDays, setHighlightDays] = useState<number[]>([]);
   const [shareToast, setShareToast] = useState(false);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [budgetOpen, setBudgetOpen] = useState(false);
 
   // Fetch POIs for pub lunch planner
   useEffect(() => {
@@ -263,38 +265,44 @@ export default function TripPlanner() {
       )}
 
       {/* ═══════ Step 2 — Your Route ═══════ */}
-      {step === 2 && stops.length > 0 && (
-        <div className="space-y-5">
-          {/* Summary strip */}
-          {(() => {
-            const totalNights = stops.filter(s => !s.restDay).length - 1;
-            const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
-            return (
-              <div className="grid grid-cols-5 gap-3">
-                {[
-                  { value: plan.days, label: "Days", icon: "calendar_today" },
-                  { value: "102", label: "Miles", icon: "straighten" },
-                  { value: avgMiles, label: "Mi/day", icon: "speed" },
-                  { value: `${weather.tempLow}–${weather.tempHigh}°C`, label: weather.month, icon: RAINFALL_ICON[weather.rainfall] },
-                  { value: `${bookedNights}/${totalNights}`, label: "Nights booked", icon: "bed" },
-                ].map((stat, i) => (
-                  <div key={i} className="bg-surface-container-low rounded-xl p-3 text-center">
-                    <span className="material-symbols-outlined text-sm text-secondary mb-1 block">{stat.icon}</span>
-                    <p className="text-lg font-bold text-primary">{stat.value}</p>
-                    <p className="text-[10px] text-secondary">{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+      {step === 2 && stops.length > 0 && (() => {
+        const totalNights = stops.filter(s => !s.restDay).length - 1;
+        const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
+        return (
+        <div className="space-y-6">
+          {/* Hero stat */}
+          <div className="text-center py-2">
+            <p className="text-4xl font-medium text-primary italic" style={{ fontFamily: "var(--font-serif)" }}>
+              {plan.days}-Day Walk
+            </p>
+            <p className="text-sm text-secondary mt-1">
+              102 miles · {MONTHS[plan.month]} · {paceLabel} pace
+            </p>
+            <div className="flex items-center justify-center gap-3 mt-3">
+              <span className="inline-flex items-center gap-1.5 bg-surface-container-low rounded-full px-3 py-1.5 text-xs font-bold text-secondary">
+                <span className="material-symbols-outlined text-sm">speed</span> {avgMiles} mi/day
+              </span>
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${bookedNights === totalNights && totalNights > 0 ? "bg-primary/10 text-primary" : "bg-accent-soft text-accent"}`}>
+                <span className="material-symbols-outlined text-sm">bed</span> {bookedNights}/{totalNights} nights
+              </span>
+              <span className="inline-flex items-center gap-1.5 bg-surface-container-low rounded-full px-3 py-1.5 text-xs font-bold text-secondary">
+                <span className="material-symbols-outlined text-sm">{RAINFALL_ICON[weather.rainfall]}</span> {weather.tempLow}–{weather.tempHigh}°C
+              </span>
+            </div>
+          </div>
 
           {/* Elevation profile */}
-          <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
+          <div>
+            <p className="text-xs font-medium text-secondary mb-2 italic" style={{ fontFamily: "var(--font-serif)" }}>Trail Elevation</p>
+            <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
+          </div>
 
-          {/* Day cards + sidebar */}
-          <div className="flex flex-col lg:flex-row gap-5">
-            {/* Day cards */}
-            <div className="flex-1 space-y-3">
+          {/* Timeline day cards */}
+          <div className="relative">
+            {/* Vertical timeline connector */}
+            <div className="absolute left-[22px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-primary/20 via-primary/10 to-primary/5 hidden sm:block" />
+
+            <div className="space-y-3">
               {stops.map((stop, i) => {
                 const from = getStartVillage(stops, i, plan.direction);
                 const conn = connections[i];
@@ -304,136 +312,182 @@ export default function TripPlanner() {
                   return mile >= startMile && mile <= endMile;
                 });
                 const isExpanded = expandedDay === stop.day;
+                const isLastDay = i === stops.length - 1;
+
+                // Top lunch pub for at-a-glance display
+                const topLunch = dayPois
+                  .filter(p => ["pub", "cafe", "restaurant"].includes(p.type) && p.distanceFromTrail <= 500)
+                  .sort((a, b) => a.distanceFromTrail - b.distanceFromTrail)[0] || null;
 
                 return (
-                  <div key={stop.day}
-                    className={`bg-white rounded-2xl border transition-all card-press ${
-                      isExpanded ? "border-primary/20 shadow-card-hover" : "border-outline-variant/5 shadow-card card-hover-lift"
-                    }`}
+                  <div key={stop.day} className="flex gap-3 sm:gap-4"
                     onMouseEnter={() => setHighlightDays([stop.day])}
                     onMouseLeave={() => setHighlightDays([])}
                   >
-                    {/* Day header — always visible */}
-                    <button
-                      onClick={() => setExpandedDay(isExpanded ? null : stop.day)}
-                      className="w-full flex items-center gap-3 p-4 text-left"
-                    >
-                      <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl btn-primary-gradient text-white font-bold text-sm shrink-0 shadow-ambient">
+                    {/* Timeline badge */}
+                    <div className="relative z-10 shrink-0 hidden sm:flex flex-col items-center">
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shadow-ambient ${
+                        stop.accommodation ? "btn-primary-gradient text-white" : "bg-white border-2 border-primary/20 text-primary"
+                      }`}>
                         {stop.day}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-primary text-sm truncate">{from} → {stop.village}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[11px] text-secondary">{stop.miles}mi</span>
-                          <span className="text-secondary/30">·</span>
-                          <span className="text-[11px] text-secondary">{conn?.elevationGain || 0}ft ↑</span>
-                          <span className="text-secondary/30">·</span>
-                          <span className="text-[11px] text-secondary">{conn?.walkTime || "—"}</span>
-                        </div>
                       </div>
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${DIFFICULTY_COLOUR[stop.difficulty]} shrink-0`}>
-                        {stop.difficulty}
-                      </span>
-                      <span className={`material-symbols-outlined text-sm text-secondary transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                        expand_more
-                      </span>
-                    </button>
-
-                    {/* Walk score — compact, always visible */}
-                    <div className="px-4 pb-3">
-                      <WalkScoreGauge score={stop.walkScore} />
                     </div>
 
-                    {/* Expanded content */}
-                    {isExpanded && (
-                      <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/10 pt-3 animate-slide-up-fade">
-                        {/* Pub lunch stops */}
-                        <PubLunchCard
-                          pubs={dayPois}
-                          dayStartMile={startMile}
-                          dayEndMile={endMile}
-                          approximateMile={approximateMileFromLat}
-                        />
-
-                        {/* Terrain info */}
-                        {conn && (
-                          <div className="flex items-center gap-2 text-[11px] text-secondary">
-                            <span className="material-symbols-outlined text-xs">terrain</span>
-                            {conn.terrain}
-                          </div>
-                        )}
-
-                        {/* Accommodation */}
-                        {stop.accommodation ? (
-                          <div className="flex items-center gap-3 p-2.5 rounded-xl bg-primary/5 border border-primary/10">
-                            {stop.accommodation.image && (
-                              <img src={stop.accommodation.image} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <Link href={`/property/${stop.accommodation.slug}`} className="text-xs font-bold text-primary hover:underline truncate block">
-                                {stop.accommodation.name}
-                              </Link>
-                              <p className="text-[10px] text-secondary capitalize">{stop.accommodation.propertyType} · {stop.accommodation.village}</p>
+                    {/* Card */}
+                    <div className={`flex-1 bg-white rounded-2xl border transition-all ${
+                      isExpanded ? "border-primary/20 shadow-card-hover" : "border-outline-variant/5 shadow-card card-hover-lift"
+                    }`}>
+                      {/* At-a-glance header — always visible */}
+                      <button
+                        onClick={() => setExpandedDay(isExpanded ? null : stop.day)}
+                        className="w-full text-left p-4 card-press"
+                      >
+                        {/* Route + stats */}
+                        <div className="flex items-start gap-3">
+                          {/* Mobile day badge */}
+                          <span className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-xl btn-primary-gradient text-white font-bold text-sm shrink-0 shadow-ambient">
+                            {stop.day}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-primary text-sm" style={{ fontFamily: "var(--font-serif)" }}>
+                              {from} → {stop.village}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <span className="text-[11px] text-secondary">{stop.miles}mi</span>
+                              <span className="text-secondary/20">·</span>
+                              <span className="text-[11px] text-secondary">{conn?.elevationGain || 0}ft ↑</span>
+                              <span className="text-secondary/20">·</span>
+                              <span className="text-[11px] text-secondary">{conn?.walkTime || "—"}</span>
+                              <WalkScoreGauge score={stop.walkScore} compact />
                             </div>
-                            <button onClick={() => setAccommodation(stop.day, null)} className="text-secondary hover:text-red-500 shrink-0" title="Remove stay">
-                              <span className="material-symbols-outlined text-sm">close</span>
-                            </button>
                           </div>
-                        ) : i < stops.length - 1 && !stop.restDay ? (
-                          <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
-                            className="flex items-center gap-2 p-2.5 rounded-xl border border-dashed border-outline-variant/30 hover:border-primary/30 hover:bg-primary/5 transition-colors">
-                            <span className="material-symbols-outlined text-base text-secondary">bed</span>
-                            <span className="text-xs font-bold text-secondary">Find a stay in {stop.village}</span>
-                          </Link>
-                        ) : null}
-
-                        {/* Saved POIs */}
-                        {stop.savedPois && stop.savedPois.length > 0 && (
-                          <SavedPoisList pois={stop.savedPois} day={stop.day} onRemove={removePoi} />
-                        )}
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-4 pt-2">
-                          <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
-                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm">bed</span>
-                            Find stays in {stop.village}
-                          </Link>
-                          <Link href={`/explore`}
-                            className="text-xs font-bold text-secondary hover:text-primary hover:underline flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm">explore</span>
-                            Explore POIs
-                          </Link>
-                          <GPXExportButton
-                            dayNumber={stop.day}
-                            fromVillage={from}
-                            toVillage={stop.village}
-                            startMile={startMile}
-                            endMile={endMile}
-                            pois={dayPois}
-                          />
+                          <div className="flex items-center gap-2 shrink-0">
+                            <MiniElevation startMile={startMile} endMile={endMile} />
+                            <span className={`material-symbols-outlined text-sm text-secondary/40 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                              expand_more
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    )}
+
+                        {/* At-a-glance: accommodation + lunch */}
+                        <div className="flex items-center gap-3 mt-3 flex-wrap">
+                          {/* Accommodation status */}
+                          {stop.accommodation ? (
+                            <span className="inline-flex items-center gap-1.5 bg-primary/5 rounded-lg px-2.5 py-1.5 text-[11px]">
+                              {stop.accommodation.image && (
+                                <img src={stop.accommodation.image} alt="" className="w-5 h-5 rounded object-cover" />
+                              )}
+                              <span className="font-bold text-primary truncate max-w-[120px]">{stop.accommodation.name}</span>
+                              <span className="material-symbols-outlined text-xs text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                            </span>
+                          ) : !isLastDay && !stop.restDay ? (
+                            <span className="inline-flex items-center gap-1 bg-accent-soft rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-accent">
+                              <span className="material-symbols-outlined text-xs">bed</span>
+                              Find stay
+                            </span>
+                          ) : null}
+
+                          {/* Top lunch */}
+                          {topLunch && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-secondary">
+                              <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>restaurant</span>
+                              {topLunch.name}
+                            </span>
+                          )}
+
+                          {/* Saved POIs count */}
+                          {stop.savedPois && stop.savedPois.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-secondary bg-secondary/5 rounded-full px-2 py-0.5">
+                              <span className="material-symbols-outlined text-xs">bookmark</span>
+                              {stop.savedPois.length} saved
+                            </span>
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Expanded detail */}
+                      {isExpanded && (
+                        <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/10 pt-3 animate-slide-up-fade">
+                          <PubLunchCard pubs={dayPois} dayStartMile={startMile} dayEndMile={endMile} approximateMile={approximateMileFromLat} />
+
+                          {conn && (
+                            <div className="flex items-center gap-2 text-[11px] text-secondary">
+                              <span className="material-symbols-outlined text-xs">terrain</span>
+                              {conn.terrain}
+                            </div>
+                          )}
+
+                          {/* Accommodation detail */}
+                          {stop.accommodation ? (
+                            <div className="flex items-center gap-3 p-2.5 rounded-xl bg-primary/5 border border-primary/10">
+                              {stop.accommodation.image && (
+                                <img src={stop.accommodation.image} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <Link href={`/property/${stop.accommodation.slug}`} className="text-xs font-bold text-primary hover:underline truncate block">
+                                  {stop.accommodation.name}
+                                </Link>
+                                <p className="text-[10px] text-secondary capitalize">{stop.accommodation.propertyType} · {stop.accommodation.village}</p>
+                              </div>
+                              <button onClick={() => setAccommodation(stop.day, null)} className="text-secondary hover:text-red-500 shrink-0" title="Remove stay">
+                                <span className="material-symbols-outlined text-sm">close</span>
+                              </button>
+                            </div>
+                          ) : !isLastDay && !stop.restDay ? (
+                            <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
+                              className="flex items-center gap-2 p-3 rounded-xl border-2 border-dashed border-accent/20 hover:border-accent/40 hover:bg-accent-soft transition-colors">
+                              <span className="material-symbols-outlined text-base text-accent">bed</span>
+                              <span className="text-xs font-bold text-accent">Find a stay in {stop.village}</span>
+                            </Link>
+                          ) : null}
+
+                          {stop.savedPois && stop.savedPois.length > 0 && (
+                            <SavedPoisList pois={stop.savedPois} day={stop.day} onRemove={removePoi} />
+                          )}
+
+                          <div className="flex items-center gap-4 pt-2">
+                            <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
+                              className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">bed</span> Find stays
+                            </Link>
+                            <Link href="/explore"
+                              className="text-xs font-bold text-secondary hover:text-primary hover:underline flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">explore</span> Explore POIs
+                            </Link>
+                            <GPXExportButton dayNumber={stop.day} fromVillage={from} toVillage={stop.village}
+                              startMile={startMile} endMile={endMile} pois={dayPois} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
+          </div>
 
-            {/* Sidebar — cost only */}
-            <div className="lg:w-72 shrink-0">
-              <div className="lg:sticky lg:top-24">
+          {/* Budget — collapsible */}
+          <div className="bg-white rounded-2xl border border-outline-variant/5 shadow-card overflow-hidden">
+            <button onClick={() => setBudgetOpen(!budgetOpen)}
+              className="w-full flex items-center justify-between px-5 py-4 text-left">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-base text-secondary">payments</span>
+                <span className="text-sm font-bold text-primary">Estimated Budget</span>
+              </div>
+              <span className={`material-symbols-outlined text-sm text-secondary transition-transform ${budgetOpen ? "rotate-180" : ""}`}>expand_more</span>
+            </button>
+            {budgetOpen && (
+              <div className="px-5 pb-5 animate-slide-up-fade">
                 <CostEstimator days={plan.days} />
               </div>
-            </div>
+            )}
           </div>
 
           {/* Actions bar */}
-          <div className="flex flex-wrap items-center gap-3 pt-5 border-t border-outline-variant/15">
+          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-outline-variant/10">
             <button onClick={() => setStep(3)}
-              className="bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">tune</span>
-              Customise
+              className="btn-primary-gradient text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-card hover:shadow-card-hover transition-all flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">tune</span> Customise
             </button>
             <button onClick={() => {
               const url = new URL(window.location.origin + "/my-trip");
@@ -443,23 +497,26 @@ export default function TripPlanner() {
               setShareToast(true);
               setTimeout(() => setShareToast(false), 2000);
             }}
-              className="px-5 py-2.5 rounded-xl font-bold text-sm text-secondary border border-outline-variant/15 hover:border-primary/30 transition-all flex items-center gap-2">
+              className="px-5 py-2.5 rounded-xl font-bold text-sm text-secondary border border-outline-variant/15 shadow-ambient hover:shadow-card transition-all flex items-center gap-2">
               <span className="material-symbols-outlined text-base">{shareToast ? "check" : "share"}</span>
               {shareToast ? "Copied!" : "Share"}
             </button>
             <button onClick={() => window.print()}
-              className="px-5 py-2.5 rounded-xl font-bold text-sm text-secondary border border-outline-variant/15 hover:border-primary/30 transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">print</span>
-              Print
+              className="px-5 py-2.5 rounded-xl font-bold text-sm text-secondary border border-outline-variant/15 shadow-ambient hover:shadow-card transition-all flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">print</span> Print
             </button>
+            <Link href="/my-trip"
+              className="px-5 py-2.5 rounded-xl font-bold text-sm text-primary border border-primary/20 shadow-ambient hover:shadow-card transition-all flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">summarize</span> My Trip
+            </Link>
             <button onClick={() => { setStep(1); updatePlan({ stops: [] }); }}
               className="ml-auto text-xs text-secondary hover:text-red-600 transition-colors flex items-center gap-1">
-              <span className="material-symbols-outlined text-xs">restart_alt</span>
-              Start over
+              <span className="material-symbols-outlined text-xs">restart_alt</span> Start over
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ═══════ Step 3 — Customise ═══════ */}
       {step === 3 && stops.length > 0 && (
