@@ -62,7 +62,7 @@ export default function MyTripSummary() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-8 print:max-w-none print:px-4 print:py-2">
+    <main className="max-w-5xl mx-auto px-6 py-8 print:max-w-none print:px-4 print:py-2">
       {/* Trip header */}
       <div className="mb-8 print:mb-4 bg-topo">
         <h1 className="text-3xl font-medium text-primary mb-2 print:text-2xl italic" style={{ fontFamily: "var(--font-serif)" }}>My Cotswold Way</h1>
