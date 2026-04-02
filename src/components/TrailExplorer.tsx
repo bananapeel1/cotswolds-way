@@ -84,7 +84,7 @@ export default function TrailExplorer() {
   const [hoveredPoiId, setHoveredPoiId] = useState<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [dayFilter, setDayFilter] = useState<number | null>(null);
-  const [popoverPoiId, setPopoverPoiId] = useState<number | null>(null);
+  const [pendingBookmarkPoi, setPendingBookmarkPoi] = useState<POI | null>(null);
   const [toast, setToast] = useState<{ message: string; icon: string } | null>(null);
   const [toastExiting, setToastExiting] = useState(false);
 
@@ -576,7 +576,6 @@ export default function TrailExplorer() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (dayFilter !== null && walkDays[dayFilter]) {
-                                  // Day filter active — save/remove directly
                                   const day = walkDays[dayFilter].day;
                                   if (isSaved) {
                                     removePoi(day, poi.id);
@@ -586,11 +585,11 @@ export default function TrailExplorer() {
                                     showToast(`Saved to Day ${day}`, "bookmark_added");
                                   }
                                 } else {
-                                  // No day filter — show day picker popover
-                                  setPopoverPoiId(popoverPoiId === poi.id ? null : poi.id);
+                                  // No day filter — open day picker sheet
+                                  setPendingBookmarkPoi(poi);
                                 }
                               }}
-                              className={`p-1.5 rounded-full transition-colors ${isSaved ? "bg-primary/10" : "hover:bg-primary/10"} ${popoverPoiId === poi.id && dayFilter === null ? "animate-bookmark-pop" : ""}`}
+                              className={`p-1.5 rounded-full transition-colors ${isSaved ? "bg-primary/10" : "hover:bg-primary/10"}`}
                               title={isSaved ? "Remove from plan" : "Save to plan"}
                             >
                               <span className="material-symbols-outlined text-base text-primary"
@@ -602,24 +601,6 @@ export default function TrailExplorer() {
                             <button disabled className="p-1.5 rounded-full opacity-30" title="Create a plan to save stops">
                               <span className="material-symbols-outlined text-base text-secondary">bookmark</span>
                             </button>
-                          )}
-                          {/* Day picker popover */}
-                          {popoverPoiId === poi.id && dayFilter === null && walkDays.length > 0 && (
-                            <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-elevated border border-outline-variant/10 py-1.5 z-30 animate-scale-in min-w-[140px]"
-                              onClick={(e) => e.stopPropagation()}>
-                              <p className="px-3 py-1 text-[9px] font-bold text-secondary uppercase">Save to day</p>
-                              {walkDays.map((wd, idx) => (
-                                <button key={idx} onClick={(e) => {
-                                  e.stopPropagation();
-                                  savePoi(wd.day, { id: poi.id, name: poi.name, type: poi.type, latitude: poi.latitude, longitude: poi.longitude });
-                                  setPopoverPoiId(null);
-                                  showToast(`Saved to Day ${wd.day}`, "bookmark_added");
-                                }}
-                                  className="w-full text-left px-3 py-1.5 text-xs text-primary hover:bg-surface-container-low transition-colors">
-                                  Day {wd.day}: {wd.from} → {wd.to}
-                                </button>
-                              ))}
-                            </div>
                           )}
                           <span className="material-symbols-outlined text-xs text-secondary/40">chevron_right</span>
                         </div>
@@ -678,6 +659,44 @@ export default function TrailExplorer() {
           </div>
         </div>
       </div>
+
+      {/* Day picker sheet — shown when bookmarking without a day filter */}
+      {pendingBookmarkPoi && walkDays.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setPendingBookmarkPoi(null)}>
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-t-2xl shadow-elevated w-full max-w-md pb-safe animate-slide-up"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div>
+                <p className="text-sm font-bold text-primary">Save to your plan</p>
+                <p className="text-xs text-secondary truncate">{pendingBookmarkPoi.name}</p>
+              </div>
+              <button onClick={() => setPendingBookmarkPoi(null)} className="p-1 rounded-full hover:bg-surface-container-high transition-colors">
+                <span className="material-symbols-outlined text-base text-secondary">close</span>
+              </button>
+            </div>
+            <div className="px-3 pb-5 space-y-1">
+              {walkDays.map((wd) => (
+                <button key={wd.day} onClick={() => {
+                  savePoi(wd.day, {
+                    id: pendingBookmarkPoi.id,
+                    name: pendingBookmarkPoi.name,
+                    type: pendingBookmarkPoi.type,
+                    latitude: pendingBookmarkPoi.latitude,
+                    longitude: pendingBookmarkPoi.longitude,
+                  });
+                  setPendingBookmarkPoi(null);
+                  showToast(`Saved to Day ${wd.day}`, "bookmark_added");
+                }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-surface-container-low transition-colors card-press">
+                  <span className="w-7 h-7 rounded-full btn-primary-gradient text-white text-xs font-bold flex items-center justify-center shrink-0">{wd.day}</span>
+                  <span className="text-sm text-primary">{wd.from} → {wd.to}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast notification */}
       {toast && (

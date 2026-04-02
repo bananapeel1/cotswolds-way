@@ -286,8 +286,16 @@ export default function SearchLayout({
                             ) : (
                               <button
                                 onClick={() => {
-                                  const match = accommodations.find(a => a.village === stop.village);
-                                  if (match?.trailStage) setStageFilter(match.trailStage);
+                                  // Use villageToStages for reliable stage lookup
+                                  const stages = villageToStages(stop.village);
+                                  if (stages.length > 0) {
+                                    setStageFilter(stages[0]);
+                                  } else {
+                                    // Fallback: try matching via accommodation data
+                                    const match = accommodations.find(a => a.village === stop.village);
+                                    if (match?.trailStage) setStageFilter(match.trailStage);
+                                    else setStageFilter(null); // show all if no match
+                                  }
                                   setHighlightDay(stop.day);
                                 }}
                                 className="w-full flex items-center gap-2 text-left"
