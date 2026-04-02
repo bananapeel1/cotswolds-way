@@ -75,14 +75,31 @@ export default function SearchLayout({
   const [panelWidth, setPanelWidth] = useState(420);
   const isDragging = useRef(false);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // Scroll sidebar card into view when a marker is selected
+  // Scroll selected card to the top of the list with fast eased animation
   useEffect(() => {
     if (!selectedSlug) return;
     const card = cardRefs.current.get(selectedSlug);
-    if (card) {
-      card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const list = listRef.current;
+    if (!card || !list) return;
+
+    const targetTop = card.offsetTop - list.offsetTop - 8;
+    const startTop = list.scrollTop;
+    const distance = targetTop - startTop;
+    if (Math.abs(distance) < 2) return;
+
+    const duration = 300; // ms — fast but fluid
+    const start = performance.now();
+    const ease = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // cubic ease-in-out
+
+    function step(now: number) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      list!.scrollTop = startTop + distance * ease(progress);
+      if (progress < 1) requestAnimationFrame(step);
     }
+    requestAnimationFrame(step);
   }, [selectedSlug]);
   const handleMouseDown = useCallback(() => { isDragging.current = true; }, []);
 
@@ -288,7 +305,7 @@ export default function SearchLayout({
         </div>
 
         {/* Cards list */}
-        <div className="px-4 pb-8 space-y-3 overflow-y-auto no-scrollbar flex-grow pt-2">
+        <div ref={listRef} className="px-4 pb-8 space-y-3 overflow-y-auto no-scrollbar flex-grow pt-2">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <span className="material-symbols-outlined text-4xl text-secondary/20 mb-3">search_off</span>
