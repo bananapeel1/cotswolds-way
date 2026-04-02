@@ -84,6 +84,16 @@ export default function TrailExplorer() {
   const [hoveredPoiId, setHoveredPoiId] = useState<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
   const [dayFilter, setDayFilter] = useState<number | null>(null);
+  const [popoverPoiId, setPopoverPoiId] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ message: string; icon: string } | null>(null);
+  const [toastExiting, setToastExiting] = useState(false);
+
+  const showToast = useCallback((message: string, icon = "check_circle") => {
+    setToast({ message, icon });
+    setToastExiting(false);
+    setTimeout(() => setToastExiting(true), 2000);
+    setTimeout(() => { setToast(null); setToastExiting(false); }, 2300);
+  }, []);
 
   // Shared plan from localStorage
   const { plan, savePoi, removePoi, hydrated } = usePlanStorage();
@@ -494,82 +504,129 @@ export default function TrailExplorer() {
               const layer = layers.find((l) => l.types.includes(type));
               return (
                 <div key={type}>
-                  <div className="px-5 py-2 bg-surface-container-low border-b border-outline-variant/10 sticky top-0 z-10">
+                  {/* Section header */}
+                  <div className="px-5 py-3 bg-surface-container-low/80 backdrop-blur-sm border-b border-outline-variant/10 sticky top-0 z-10"
+                    style={{ borderLeftWidth: "4px", borderLeftColor: layer?.color || "#666" }}>
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-sm" style={{ color: layer?.color, fontVariationSettings: "'FILL' 1" }}>{POI_MATERIAL_ICONS[type] || "location_on"}</span>
-                        <span className="text-xs font-bold text-primary capitalize">{type.replace("_", " ")}s</span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="material-symbols-outlined text-lg" style={{ color: layer?.color, fontVariationSettings: "'FILL' 1" }}>{POI_MATERIAL_ICONS[type] || "location_on"}</span>
+                        <span className="text-sm font-semibold text-primary capitalize" style={{ fontFamily: "var(--font-serif)" }}>{type.replace("_", " ")}s</span>
                       </div>
-                      <span className="text-[10px] text-secondary font-bold">{typePois.length}</span>
+                      <span className="text-[10px] text-secondary font-bold bg-secondary/8 rounded-full px-2 py-0.5">{typePois.length}</span>
                     </div>
                   </div>
+                  {/* POI cards */}
                   {typePois.slice(0, cardLimit).map((poi) => {
                     const hours = poi.tags.opening_hours || null;
                     const cuisine = poi.tags.cuisine || null;
                     const phone = poi.tags.phone || null;
                     const website = poi.tags.website || null;
-                    const hasExtra = hours || cuisine;
+                    const isSaved = savedPoiIds.has(poi.id);
                     return (
-                      <button
+                      <div
                         key={poi.id}
                         ref={(el) => { if (el) cardRefsMap.current.set(poi.id, el); else cardRefsMap.current.delete(poi.id); }}
-                        onClick={() => flyTo(poi)}
+                        onClick={() => { flyTo(poi); setPopoverPoiId(null); }}
                         onMouseEnter={() => setHoveredPoiId(poi.id)}
                         onMouseLeave={() => setHoveredPoiId(null)}
-                        className={`w-full flex items-center gap-3 px-5 py-2.5 border-b border-outline-variant/5 hover:bg-surface-container-low transition-colors text-left ${
-                          hoveredPoiId === poi.id ? "bg-primary/5" : ""
+                        role="button"
+                        className={`relative w-full flex items-start gap-3 px-4 py-3 mx-1 my-0.5 rounded-lg transition-all text-left card-press cursor-pointer ${
+                          hoveredPoiId === poi.id ? "bg-white shadow-card" : isSaved ? "bg-primary/3" : "hover:bg-surface-container-low"
                         }`}
+                        style={{ borderLeftWidth: "3px", borderLeftColor: hoveredPoiId === poi.id ? (layer?.color || "#666") : "transparent" }}
                       >
+                        {/* Type icon circle */}
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                          style={{ backgroundColor: `${layer?.color || "#666"}12` }}>
+                          <span className="material-symbols-outlined text-base" style={{ color: layer?.color, fontVariationSettings: "'FILL' 1" }}>
+                            {POI_MATERIAL_ICONS[poi.type] || "location_on"}
+                          </span>
+                        </div>
+                        {/* Content */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-primary truncate">{poi.name}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-secondary">{formatDistance(poi.distanceFromTrail)}</span>
-                            {cuisine && <span className="text-[10px] text-secondary/70 truncate">· {cuisine.replace(/;/g, ", ")}</span>}
+                          <p className="text-sm font-semibold text-primary truncate">{poi.name}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] bg-secondary/8 rounded-full px-2 py-0.5 text-secondary font-medium">
+                              {formatDistance(poi.distanceFromTrail)}
+                            </span>
+                            {cuisine && <span className="text-[10px] text-secondary/60 truncate">· {cuisine.replace(/;/g, ", ")}</span>}
                           </div>
                           {hours && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <span className="material-symbols-outlined text-[10px] text-secondary/60">schedule</span>
-                              <span className="text-[10px] text-secondary/70 truncate">{hours}</span>
+                            <div className="flex items-center gap-1 mt-1.5">
+                              <span className="material-symbols-outlined text-xs text-accent">schedule</span>
+                              <span className="text-[11px] text-secondary truncate">{hours}</span>
                             </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        {/* Actions */}
+                        <div className="flex items-center gap-0.5 shrink-0 relative">
                           {phone && (
-                            <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} className="p-1 rounded-full hover:bg-primary/10 transition-colors" title={phone}>
-                              <span className="material-symbols-outlined text-sm text-secondary">call</span>
+                            <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} className="p-1.5 rounded-full hover:bg-primary/10 transition-colors" title={phone}>
+                              <span className="material-symbols-outlined text-base text-secondary">call</span>
                             </a>
                           )}
                           {website && (
-                            <a href={website} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1 rounded-full hover:bg-primary/10 transition-colors" title="Website">
-                              <span className="material-symbols-outlined text-sm text-secondary">open_in_new</span>
+                            <a href={website} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 rounded-full hover:bg-primary/10 transition-colors" title="Website">
+                              <span className="material-symbols-outlined text-base text-secondary">open_in_new</span>
                             </a>
                           )}
-                          {dayFilter !== null && walkDays[dayFilter] && (
+                          {/* Bookmark — always visible */}
+                          {walkDays.length > 0 ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const day = walkDays[dayFilter!].day;
-                                if (savedPoiIds.has(poi.id)) {
-                                  removePoi(day, poi.id);
+                                if (dayFilter !== null && walkDays[dayFilter]) {
+                                  // Day filter active — save/remove directly
+                                  const day = walkDays[dayFilter].day;
+                                  if (isSaved) {
+                                    removePoi(day, poi.id);
+                                    showToast("Removed from plan", "bookmark_remove");
+                                  } else {
+                                    savePoi(day, { id: poi.id, name: poi.name, type: poi.type, latitude: poi.latitude, longitude: poi.longitude });
+                                    showToast(`Saved to Day ${day}`, "bookmark_added");
+                                  }
                                 } else {
-                                  savePoi(day, { id: poi.id, name: poi.name, type: poi.type, latitude: poi.latitude, longitude: poi.longitude });
+                                  // No day filter — show day picker popover
+                                  setPopoverPoiId(popoverPoiId === poi.id ? null : poi.id);
                                 }
                               }}
-                              className="p-1 rounded-full hover:bg-primary/10 transition-colors"
-                              title={savedPoiIds.has(poi.id) ? "Remove from plan" : "Save to plan"}
+                              className={`p-1.5 rounded-full transition-colors ${isSaved ? "bg-primary/10" : "hover:bg-primary/10"} ${popoverPoiId === poi.id && dayFilter === null ? "animate-bookmark-pop" : ""}`}
+                              title={isSaved ? "Remove from plan" : "Save to plan"}
                             >
-                              <span className="material-symbols-outlined text-sm text-primary"
-                                style={{ fontVariationSettings: savedPoiIds.has(poi.id) ? "'FILL' 1" : "'FILL' 0" }}>
+                              <span className="material-symbols-outlined text-base text-primary"
+                                style={{ fontVariationSettings: isSaved ? "'FILL' 1" : "'FILL' 0" }}>
                                 bookmark
                               </span>
                             </button>
+                          ) : (
+                            <button disabled className="p-1.5 rounded-full opacity-30" title="Create a plan to save stops">
+                              <span className="material-symbols-outlined text-base text-secondary">bookmark</span>
+                            </button>
                           )}
-                          <span className="material-symbols-outlined text-xs text-secondary">chevron_right</span>
+                          {/* Day picker popover */}
+                          {popoverPoiId === poi.id && dayFilter === null && walkDays.length > 0 && (
+                            <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-elevated border border-outline-variant/10 py-1.5 z-30 animate-scale-in min-w-[140px]"
+                              onClick={(e) => e.stopPropagation()}>
+                              <p className="px-3 py-1 text-[9px] font-bold text-secondary uppercase">Save to day</p>
+                              {walkDays.map((wd, idx) => (
+                                <button key={idx} onClick={(e) => {
+                                  e.stopPropagation();
+                                  savePoi(wd.day, { id: poi.id, name: poi.name, type: poi.type, latitude: poi.latitude, longitude: poi.longitude });
+                                  setPopoverPoiId(null);
+                                  showToast(`Saved to Day ${wd.day}`, "bookmark_added");
+                                }}
+                                  className="w-full text-left px-3 py-1.5 text-xs text-primary hover:bg-surface-container-low transition-colors">
+                                  Day {wd.day}: {wd.from} → {wd.to}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <span className="material-symbols-outlined text-xs text-secondary/40">chevron_right</span>
                         </div>
-                      </button>
+                      </div>
                     );
                   })}
-                  {typePois.length > cardLimit && <p className="px-5 py-2 text-[10px] text-secondary">+ {typePois.length - cardLimit} more</p>}
+                  {typePois.length > cardLimit && <p className="px-5 py-2 text-[10px] text-secondary italic">+ {typePois.length - cardLimit} more</p>}
                 </div>
               );
             })}
@@ -621,6 +678,14 @@ export default function TrailExplorer() {
           </div>
         </div>
       </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-5 py-3 rounded-2xl shadow-toast flex items-center gap-2 text-sm font-bold ${toastExiting ? "animate-toast-out" : "animate-toast-in"}`}>
+          <span className="material-symbols-outlined text-base">{toast.icon}</span>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

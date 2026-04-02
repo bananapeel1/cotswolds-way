@@ -49,7 +49,7 @@ export default function Navbar() {
   const isTrailPage = trailLinks.some((l) => pathname === l.href);
 
   return (
-    <nav className="bg-surface/80 backdrop-blur-xl sticky top-0 z-50 border-b border-outline-variant/10">
+    <nav className="bg-surface/80 backdrop-blur-xl sticky top-0 z-50 border-b border-outline-variant/10 shadow-ambient">
       <div className="flex justify-between items-center px-6 sm:px-8 py-4 max-w-screen-2xl mx-auto w-full">
         <Link
           href="/"

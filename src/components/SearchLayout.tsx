@@ -71,6 +71,15 @@ export default function SearchLayout({
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
   const [panelWidth, setPanelWidth] = useState(420);
   const isDragging = useRef(false);
+  const [toast, setToast] = useState<{ message: string; icon: string } | null>(null);
+  const [toastExiting, setToastExiting] = useState(false);
+
+  const showToast = useCallback((message: string, icon = "check_circle") => {
+    setToast({ message, icon });
+    setToastExiting(false);
+    setTimeout(() => setToastExiting(true), 2000);
+    setTimeout(() => { setToast(null); setToastExiting(false); }, 2300);
+  }, []);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const listRef = useRef<HTMLDivElement>(null);
   const [planOpen, setPlanOpen] = useState(true);
@@ -151,7 +160,8 @@ export default function SearchLayout({
       propertyType: acc.propertyType,
       image: acc.image,
     });
-  }, [setAccommodation]);
+    showToast(`${acc.name} booked for Night ${day}`, "bed");
+  }, [setAccommodation, showToast]);
 
   const toggleWishlist = useCallback((acc: AccommodationCard) => {
     if (wishlistSlugSet.has(acc.slug)) {
@@ -185,8 +195,20 @@ export default function SearchLayout({
 
   if (!hydrated || !wishlistHydrated) {
     return (
-      <main className="flex-grow flex items-center justify-center h-[calc(100vh-65px)]">
-        <span className="material-symbols-outlined animate-spin text-primary text-2xl">progress_activity</span>
+      <main className="flex-grow flex flex-col lg:flex-row h-[calc(100vh-65px)]">
+        <section className="w-full lg:w-[420px] p-4 space-y-3 shrink-0">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex gap-3 animate-fade-in" style={{ animationDelay: `${i * 0.05}s` }}>
+              <div className="w-28 h-[120px] skeleton-shimmer shrink-0" />
+              <div className="flex-1 space-y-2.5 py-3">
+                <div className="h-4 w-3/4 skeleton-shimmer" />
+                <div className="h-3 w-1/2 skeleton-shimmer" />
+                <div className="h-3 w-2/3 skeleton-shimmer" />
+              </div>
+            </div>
+          ))}
+        </section>
+        <div className="flex-1 bg-surface-container-low" />
       </main>
     );
   }
@@ -211,65 +233,91 @@ export default function SearchLayout({
         style={{ width: isDesktop ? `${panelWidth}px` : undefined }}
       >
         {/* Top panel — My Plan / Wishlist / Prompt */}
-        <div className="bg-primary/5 border-b border-primary/10 shrink-0">
+        <div className="bg-topo bg-primary/5 border-b border-primary/10 shrink-0">
           {hasPlan ? (
             <>
               <button onClick={() => setPlanOpen(!planOpen)}
                 className="w-full flex items-center justify-between px-5 py-3">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-base text-primary">checklist</span>
-                  <span className="text-sm font-bold text-primary">My Plan</span>
-                  <span className="text-[10px] font-bold text-secondary">{bookedNights} of {nightStops.length} nights</span>
+                  <span className="material-symbols-outlined text-base text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>hiking</span>
+                  <span className="text-sm font-bold text-primary" style={{ fontFamily: "var(--font-serif)" }}>My Plan</span>
+                  <span className="text-[10px] font-bold text-secondary bg-secondary/8 rounded-full px-2 py-0.5">{bookedNights}/{nightStops.length} nights</span>
                 </div>
                 <span className={`material-symbols-outlined text-sm text-primary transition-transform ${planOpen ? "rotate-180" : ""}`}>keyboard_arrow_down</span>
               </button>
               {planOpen && (
-                <div className="px-5 pb-4 space-y-1.5">
-                  {nightStops.map((stop) => {
-                    const isHighlighted = highlightDay === stop.day;
-                    return (
-                      <div key={stop.day}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-colors ${
-                          isHighlighted ? "bg-primary/10 border border-primary/20" : "bg-white"
-                        }`}>
-                        <span className="bg-primary text-white text-[9px] font-bold w-5 h-5 rounded-full flex items-center justify-center shrink-0">
-                          {stop.day}
+                <div className="px-5 pb-4 relative">
+                  {/* Timeline connecting line */}
+                  <div className="absolute left-[36px] top-0 bottom-16 w-0.5 bg-gradient-to-b from-primary/20 via-primary/10 to-transparent" />
+
+                  <div className="space-y-0.5">
+                    {nightStops.map((stop) => {
+                      const isHighlighted = highlightDay === stop.day;
+                      return (
+                        <div key={stop.day} className="relative flex items-start gap-3 py-1.5">
+                          {/* Day circle */}
+                          <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold transition-all ${
+                            stop.accommodation
+                              ? "btn-primary-gradient text-white shadow-ambient"
+                              : isHighlighted
+                                ? "bg-accent text-white shadow-ambient"
+                                : "border-2 border-primary/25 text-primary bg-surface"
+                          }`}>
+                            {stop.day}
+                          </div>
+                          {/* Content */}
+                          <div className={`flex-1 min-w-0 rounded-xl p-2.5 transition-all ${
+                            stop.accommodation ? "bg-white shadow-ambient" : isHighlighted ? "bg-accent-soft" : "bg-surface-container-low/60"
+                          }`}>
+                            {stop.accommodation ? (
+                              <div className="flex items-center gap-2.5">
+                                {stop.accommodation.image && (
+                                  <img src={stop.accommodation.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                                )}
+                                <div className="min-w-0 flex-grow">
+                                  <p className="text-xs font-bold text-primary truncate">{stop.accommodation.name}</p>
+                                  <p className="text-[9px] text-secondary">{stop.village}</p>
+                                </div>
+                                <button onClick={() => { setAccommodation(stop.day, null); showToast("Stay removed", "delete"); }}
+                                  className="text-secondary hover:text-red-500 shrink-0 p-1 rounded-full hover:bg-red-50 transition-colors" title="Remove stay">
+                                  <span className="material-symbols-outlined text-sm">close</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  const match = accommodations.find(a => a.village === stop.village);
+                                  if (match?.trailStage) setStageFilter(match.trailStage);
+                                  setHighlightDay(stop.day);
+                                }}
+                                className="w-full flex items-center gap-2 text-left"
+                              >
+                                <span className="text-xs text-secondary truncate flex-1">{stop.village}</span>
+                                <span className="text-[11px] font-bold text-accent bg-accent/10 rounded-full px-2.5 py-1 whitespace-nowrap">Find stay</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mt-3 px-1">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold text-secondary">{bookedNights} of {nightStops.length} nights booked</span>
+                      {bookedNights === nightStops.length && nightStops.length > 0 && (
+                        <span className="text-[10px] font-bold text-primary flex items-center gap-1 animate-scale-in">
+                          <span className="material-symbols-outlined text-xs">celebration</span>
+                          All booked!
                         </span>
-                        {stop.accommodation ? (
-                          <>
-                            <div className="min-w-0 flex-grow">
-                              <p className="text-xs font-bold text-primary truncate">{stop.accommodation.name}</p>
-                              <p className="text-[9px] text-secondary">{stop.village}</p>
-                            </div>
-                            <button onClick={() => setAccommodation(stop.day, null)}
-                              className="text-secondary hover:text-red-500 shrink-0" title="Remove stay">
-                              <span className="material-symbols-outlined text-sm">close</span>
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              const match = accommodations.find(a => a.village === stop.village);
-                              if (match?.trailStage) setStageFilter(match.trailStage);
-                              setHighlightDay(stop.day);
-                            }}
-                            className="flex-grow flex items-center gap-1.5 text-left"
-                          >
-                            <span className="text-xs text-secondary truncate">{stop.village}</span>
-                            <span className="text-[10px] font-bold text-tertiary whitespace-nowrap">Find stay</span>
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {nightStops.length > 0 && (
-                    <div className="mt-2">
-                      <div className="h-1.5 bg-outline-variant/20 rounded-full overflow-hidden">
-                        <div className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${(bookedNights / nightStops.length) * 100}%` }} />
-                      </div>
+                      )}
                     </div>
-                  )}
+                    <div className="h-2 bg-surface-container-high rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary to-primary-container"
+                        style={{ width: `${nightStops.length > 0 ? (bookedNights / nightStops.length) * 100 : 0}%` }} />
+                    </div>
+                  </div>
                 </div>
               )}
             </>
@@ -278,31 +326,31 @@ export default function SearchLayout({
               <button onClick={() => setPlanOpen(!planOpen)}
                 className="w-full flex items-center justify-between px-5 py-3">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-base text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
-                  <span className="text-sm font-bold text-primary">My Wishlist</span>
-                  <span className="text-[10px] font-bold text-secondary">{wishlistItems.length} saved</span>
+                  <span className="material-symbols-outlined text-base text-accent" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                  <span className="text-sm font-bold text-primary" style={{ fontFamily: "var(--font-serif)" }}>My Wishlist</span>
+                  <span className="text-[10px] font-bold text-secondary bg-secondary/8 rounded-full px-2 py-0.5">{wishlistItems.length} saved</span>
                 </div>
                 <span className={`material-symbols-outlined text-sm text-primary transition-transform ${planOpen ? "rotate-180" : ""}`}>keyboard_arrow_down</span>
               </button>
               {planOpen && (
                 <div className="px-5 pb-4 space-y-1.5">
                   {wishlistItems.map((item) => (
-                    <div key={item.slug} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2">
-                      {item.image && <img src={item.image} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />}
+                    <div key={item.slug} className="flex items-center gap-2.5 bg-white shadow-ambient rounded-xl px-3 py-2.5">
+                      {item.image && <img src={item.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />}
                       <div className="min-w-0 flex-grow">
                         <p className="text-xs font-bold text-primary truncate">{item.name}</p>
                         <p className="text-[9px] text-secondary capitalize">{item.village} · {item.propertyType}</p>
                       </div>
-                      <button onClick={() => removeWishlistItem(item.slug)}
-                        className="text-secondary hover:text-red-500 shrink-0">
+                      <button onClick={() => { removeWishlistItem(item.slug); showToast("Removed from wishlist", "heart_broken"); }}
+                        className="text-secondary hover:text-red-500 shrink-0 p-1 rounded-full hover:bg-red-50 transition-colors">
                         <span className="material-symbols-outlined text-sm">close</span>
                       </button>
                     </div>
                   ))}
                   <div className="flex items-center gap-3 pt-2">
                     <Link href="/plan"
-                      className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-tertiary transition-colors">
-                      <span className="material-symbols-outlined text-sm">arrow_forward</span> Build a plan from these
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-accent rounded-full px-4 py-2 shadow-ambient hover:shadow-card transition-all">
+                      <span className="material-symbols-outlined text-sm">auto_awesome</span> Build a plan from these
                     </Link>
                     <button onClick={clearWishlist} className="text-[10px] text-secondary hover:text-red-500 transition-colors">Clear</button>
                   </div>
@@ -312,11 +360,11 @@ export default function SearchLayout({
           ) : (
             <div className="px-5 py-4">
               <div className="flex items-center gap-2 mb-2">
-                <span className="material-symbols-outlined text-base text-primary">checklist</span>
-                <span className="text-sm font-bold text-primary">My Plan</span>
+                <span className="material-symbols-outlined text-base text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>hiking</span>
+                <span className="text-sm font-bold text-primary" style={{ fontFamily: "var(--font-serif)" }}>My Plan</span>
               </div>
-              <p className="text-xs text-secondary mb-2">Plan your walk to assign stays, or save favourites below</p>
-              <Link href="/plan" className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:text-tertiary transition-colors">
+              <p className="text-xs text-secondary mb-3">Plan your walk to assign stays, or save favourites below</p>
+              <Link href="/plan" className="inline-flex items-center gap-1.5 text-xs font-bold text-white btn-primary-gradient rounded-full px-4 py-2 shadow-ambient hover:shadow-card transition-all">
                 <span className="material-symbols-outlined text-sm">arrow_forward</span> Create a plan
               </Link>
             </div>
@@ -392,8 +440,8 @@ export default function SearchLayout({
                 <div key={acc.slug}
                   ref={(el) => { if (el) cardRefs.current.set(acc.slug, el); else cardRefs.current.delete(acc.slug); }}
                   onClick={() => setSelectedSlug((prev) => (prev === acc.slug ? null : acc.slug))}
-                  className={`bg-white rounded-xl overflow-hidden border transition-all cursor-pointer ${
-                    selectedSlug === acc.slug ? "border-primary shadow-md" : isPlanned ? "border-primary/30" : isWishlisted ? "border-tertiary/30" : "border-outline-variant/10 hover:shadow-sm"
+                  className={`bg-white rounded-xl overflow-hidden border transition-all cursor-pointer card-press ${
+                    selectedSlug === acc.slug ? "border-primary shadow-card-hover border-l-4" : isPlanned ? "border-primary/30 shadow-card" : isWishlisted ? "border-accent/30 shadow-card" : "border-outline-variant/10 shadow-ambient card-hover-lift"
                   }`}
                 >
                   <div className="flex min-h-[120px]">
@@ -484,6 +532,14 @@ export default function SearchLayout({
           planSlugs={planSlugs}
         />
       </section>
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-inverse-surface text-inverse-on-surface px-5 py-3 rounded-2xl shadow-toast flex items-center gap-2 text-sm font-bold ${toastExiting ? "animate-toast-out" : "animate-toast-in"}`}>
+          <span className="material-symbols-outlined text-base">{toast.icon}</span>
+          {toast.message}
+        </div>
+      )}
     </main>
   );
 }

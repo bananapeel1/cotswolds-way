@@ -64,8 +64,8 @@ export default function MyTripSummary() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-8 print:max-w-none print:px-4 print:py-2">
       {/* Trip header */}
-      <div className="mb-8 print:mb-4">
-        <h1 className="font-headline text-3xl font-bold text-primary mb-2 print:text-2xl">My Cotswold Way</h1>
+      <div className="mb-8 print:mb-4 bg-topo">
+        <h1 className="text-3xl font-medium text-primary mb-2 print:text-2xl italic" style={{ fontFamily: "var(--font-serif)" }}>My Cotswold Way</h1>
         <p className="text-sm text-secondary mb-4">
           {plan.days} days · 102 miles · {MONTHS[plan.month]} · {weather.tempLow}–{weather.tempHigh}°C
         </p>
@@ -78,8 +78,10 @@ export default function MyTripSummary() {
             { value: `${bookedNights}/${totalNights}`, label: "Nights booked", icon: "bed" },
             { value: `${weather.tempLow}–${weather.tempHigh}°C`, label: MONTHS[plan.month].slice(0, 3), icon: RAINFALL_ICON[weather.rainfall] },
           ].map((stat, i) => (
-            <div key={i} className="bg-surface-container-low rounded-xl p-3 text-center print:bg-gray-50 print:border print:border-gray-200">
-              <span className="material-symbols-outlined text-sm text-secondary mb-1 block print:hidden">{stat.icon}</span>
+            <div key={i} className="bg-white shadow-card rounded-2xl p-4 text-center print:bg-gray-50 print:border print:border-gray-200">
+              <div className="w-8 h-8 rounded-full bg-accent-soft flex items-center justify-center mx-auto mb-2 print:hidden">
+                <span className="material-symbols-outlined text-sm text-accent">{stat.icon}</span>
+              </div>
               <p className="text-lg font-bold text-primary">{stat.value}</p>
               <p className="text-[10px] text-secondary">{stat.label}</p>
             </div>
@@ -131,10 +133,10 @@ export default function MyTripSummary() {
           const topLunch = dayFoodPois[0] || null;
 
           return (
-            <div key={stop.day} className="bg-white rounded-2xl border border-outline-variant/10 p-5 print:border-gray-200 print:shadow-none print:break-inside-avoid">
+            <div key={stop.day} className="bg-white rounded-2xl border border-outline-variant/5 shadow-card card-hover-lift p-5 print:border-gray-200 print:shadow-none print:break-inside-avoid">
               {/* Day header */}
               <div className="flex items-start gap-3 mb-3">
-                <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-white font-bold text-sm shrink-0">
+                <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl btn-primary-gradient text-white font-bold text-sm shrink-0 shadow-ambient">
                   {stop.day}
                 </span>
                 <div className="flex-1 min-w-0">

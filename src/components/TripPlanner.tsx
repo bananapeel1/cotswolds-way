@@ -255,7 +255,7 @@ export default function TripPlanner() {
 
           {/* Build route CTA */}
           <button onClick={buildRoute}
-            className="w-full bg-primary text-white py-4 rounded-2xl font-bold text-base shadow-lg hover:shadow-xl hover:bg-primary-container transition-all flex items-center justify-center gap-2 group">
+            className="w-full btn-primary-gradient text-white py-4 rounded-2xl font-bold text-base shadow-elevated hover:shadow-toast transition-all flex items-center justify-center gap-2 group">
             <span className="material-symbols-outlined group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
             Build My Route
           </button>
@@ -307,8 +307,8 @@ export default function TripPlanner() {
 
                 return (
                   <div key={stop.day}
-                    className={`bg-white rounded-2xl border transition-all ${
-                      isExpanded ? "border-primary/20 shadow-md" : "border-outline-variant/10 hover:shadow-sm"
+                    className={`bg-white rounded-2xl border transition-all card-press ${
+                      isExpanded ? "border-primary/20 shadow-card-hover" : "border-outline-variant/5 shadow-card card-hover-lift"
                     }`}
                     onMouseEnter={() => setHighlightDays([stop.day])}
                     onMouseLeave={() => setHighlightDays([])}
@@ -318,7 +318,7 @@ export default function TripPlanner() {
                       onClick={() => setExpandedDay(isExpanded ? null : stop.day)}
                       className="w-full flex items-center gap-3 p-4 text-left"
                     >
-                      <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-primary text-white font-bold text-sm shrink-0">
+                      <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl btn-primary-gradient text-white font-bold text-sm shrink-0 shadow-ambient">
                         {stop.day}
                       </span>
                       <div className="flex-1 min-w-0">
@@ -346,7 +346,7 @@ export default function TripPlanner() {
 
                     {/* Expanded content */}
                     {isExpanded && (
-                      <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/10 pt-3">
+                      <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/10 pt-3 animate-slide-up-fade">
                         {/* Pub lunch stops */}
                         <PubLunchCard
                           pubs={dayPois}

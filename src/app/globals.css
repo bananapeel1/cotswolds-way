@@ -22,15 +22,19 @@
   --color-on-secondary-fixed: #211b0f;
   --color-on-secondary-fixed-variant: #4e4638;
 
-  /* Tertiary: Green accent (was orange Trail Marker) */
-  --color-tertiary: #154212;
-  --color-tertiary-container: #bcf0ae;
-  --color-tertiary-fixed: #d4f5c8;
-  --color-tertiary-fixed-dim: #bcf0ae;
+  /* Tertiary: Trail Marker Orange */
+  --color-tertiary: #541600;
+  --color-tertiary-container: #ffdbc9;
+  --color-tertiary-fixed: #ffe8dd;
+  --color-tertiary-fixed-dim: #ffdbc9;
   --color-on-tertiary: #ffffff;
-  --color-on-tertiary-container: #002201;
-  --color-on-tertiary-fixed: #002201;
-  --color-on-tertiary-fixed-variant: #154212;
+  --color-on-tertiary-container: #3a0f00;
+  --color-on-tertiary-fixed: #2c0b00;
+  --color-on-tertiary-fixed-variant: #541600;
+
+  /* Accent: Vibrant CTA Orange */
+  --color-accent: #c73e00;
+  --color-accent-soft: #fff1eb;
 
   /* Surface system */
   --color-surface: #fcf9f4;
@@ -66,6 +70,7 @@
   --font-headline: "Manrope", sans-serif;
   --font-body: "Inter", sans-serif;
   --font-label: "Manrope", sans-serif;
+  --font-serif: var(--font-newsreader, "Georgia"), serif;
 
   /* Border radius */
   --radius-sm: 0.25rem;
@@ -82,60 +87,94 @@ body {
   color: var(--color-on-surface);
 }
 
-/* Material Symbols */
+/* ─── Material Symbols ────────────────────────────────────────────────────── */
+
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   vertical-align: middle;
 }
-
 .material-symbols-outlined.filled {
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
-/* Hide scrollbar utility */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+/* ─── Warm Shadow System ──────────────────────────────────────────────────── */
+
+.shadow-ambient { box-shadow: 0 1px 3px rgba(102,93,78,0.06), 0 1px 2px rgba(102,93,78,0.04); }
+.shadow-card { box-shadow: 0 2px 8px rgba(102,93,78,0.08), 0 1px 3px rgba(102,93,78,0.05); }
+.shadow-card-hover { box-shadow: 0 8px 24px rgba(102,93,78,0.12), 0 2px 6px rgba(102,93,78,0.06); }
+.shadow-elevated { box-shadow: 0 12px 40px rgba(102,93,78,0.14), 0 4px 12px rgba(102,93,78,0.08); }
+.shadow-toast { box-shadow: 0 16px 48px rgba(102,93,78,0.18), 0 6px 16px rgba(102,93,78,0.10); }
+
+/* ─── Interactive Utilities ───────────────────────────────────────────────── */
+
+.card-press:active { transform: scale(0.98); }
+.card-hover-lift {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.card-hover-lift:hover {
+  box-shadow: 0 8px 24px rgba(102,93,78,0.12), 0 2px 6px rgba(102,93,78,0.06);
+  transform: translateY(-1px);
+}
+.btn-primary-gradient {
+  background: linear-gradient(135deg, #154212 0%, #1e5a18 100%);
+}
+.btn-primary-gradient:hover {
+  background: linear-gradient(135deg, #1e5a18 0%, #267022 100%);
 }
 
-/* Map preview slide-up animation */
-@keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.animate-slide-up {
-  animation: slide-up 0.25s ease-out;
+/* ─── Animation Keyframes ─────────────────────────────────────────────────── */
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scale-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slide-up-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(16px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(8px) scale(0.95); } }
+@keyframes bookmark-pop { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+@keyframes progress-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
+.animate-scale-in { animation: scale-in 0.2s ease-out; }
+.animate-slide-up { animation: slide-up 0.25s ease-out; }
+.animate-slide-up-fade { animation: slide-up-fade 0.25s ease-out; }
+.animate-toast-in { animation: toast-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.animate-toast-out { animation: toast-out 0.2s ease-in forwards; }
+.animate-bookmark-pop { animation: bookmark-pop 0.3s ease-out; }
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #ebe8e3 25%, #f6f3ee 50%, #ebe8e3 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 0.75rem;
 }
 
-/* Mapbox popup styling — must sit above all markers */
-.mapboxgl-popup {
-  z-index: 50 !important;
+/* ─── Topographic Background Pattern ──────────────────────────────────────── */
+
+.bg-topo {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5c12 0 20 8 25 20s-5 25-15 30M10 15c8-5 18 0 22 10s2 22-8 28M5 35c5-8 15-10 22-5s10 18 5 25' fill='none' stroke='%23665d4e' stroke-width='0.5' opacity='0.06'/%3E%3C/svg%3E");
 }
+
+/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─── Mapbox Popup ────────────────────────────────────────────────────────── */
+
+.mapboxgl-popup { z-index: 50 !important; }
 .mapboxgl-popup-content {
   border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 30px rgba(102,93,78,0.15);
 }
-.mapboxgl-popup-tip {
-  border-top-color: white;
-}
+.mapboxgl-popup-tip { border-top-color: white; }
 
-/* Print styles */
+/* ─── Print Styles ────────────────────────────────────────────────────────── */
+
 @media print {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
-  .print-card {
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
+  .print-card { break-inside: avoid; page-break-inside: avoid; }
   nav, footer { display: none !important; }
 }
