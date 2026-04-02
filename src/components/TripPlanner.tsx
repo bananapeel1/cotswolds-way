@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
@@ -45,9 +45,13 @@ export default function TripPlanner() {
       .catch(() => {});
   }, []);
 
-  // If plan has stops from localStorage, go to step 2
+  // If plan has stops from localStorage, go to step 2 (once on mount only)
+  const didAutoNav = useRef(false);
   useEffect(() => {
-    if (hydrated && plan.stops.length > 0) setStep(2);
+    if (hydrated && !didAutoNav.current && plan.stops.length > 0) {
+      setStep(2);
+      didAutoNav.current = true;
+    }
   }, [hydrated, plan.stops.length]);
 
   const stops = plan.stops;
