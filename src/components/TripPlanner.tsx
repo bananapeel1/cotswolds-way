@@ -14,6 +14,7 @@ import PubLunchCard from "@/components/plan/PubLunchCard";
 import CostEstimator from "@/components/plan/CostEstimator";
 import GPXExportButton from "@/components/plan/GPXExportButton";
 import PrintableDayCards from "@/components/plan/PrintableDayCards";
+import CustomisePanel from "@/components/plan/CustomisePanel";
 
 interface POI {
   id: number; type: string; name: string;
@@ -32,7 +33,7 @@ export default function TripPlanner() {
   const { plan, updatePlan, lastSaved, hydrated } = usePlanStorage();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [pois, setPois] = useState<POI[]>([]);
-  const [highlightDay, setHighlightDay] = useState<number | undefined>();
+  const [highlightDays, setHighlightDays] = useState<number[]>([]);
   const [shareToast, setShareToast] = useState(false);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
 
@@ -248,7 +249,7 @@ export default function TripPlanner() {
           </div>
 
           {/* Elevation profile */}
-          <ElevationProfile stops={stops} direction={plan.direction} highlightDay={highlightDay} />
+          <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
 
           {/* Day cards + sidebar */}
           <div className="flex flex-col lg:flex-row gap-5">
@@ -269,8 +270,8 @@ export default function TripPlanner() {
                     className={`bg-white rounded-2xl border transition-all ${
                       isExpanded ? "border-primary/20 shadow-md" : "border-outline-variant/10 hover:shadow-sm"
                     }`}
-                    onMouseEnter={() => setHighlightDay(stop.day)}
-                    onMouseLeave={() => setHighlightDay(undefined)}
+                    onMouseEnter={() => setHighlightDays([stop.day])}
+                    onMouseLeave={() => setHighlightDays([])}
                   >
                     {/* Day header — always visible */}
                     <button
@@ -390,77 +391,14 @@ export default function TripPlanner() {
       {/* ═══════ Step 3 — Customise ═══════ */}
       {step === 3 && stops.length > 0 && (
         <div className="max-w-2xl mx-auto space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-primary">Customise your stops</h3>
-            <button onClick={() => setStep(2)} className="text-xs font-bold text-secondary hover:text-primary flex items-center gap-1 transition-colors">
-              <span className="material-symbols-outlined text-sm">arrow_back</span> Back to route
-            </button>
-          </div>
-
-          <p className="text-xs text-secondary">Remove stops to merge days. Changes save automatically.</p>
-
-          <div className="space-y-2">
-            {/* Start marker */}
-            <div className="flex items-center gap-3 px-4 py-3 bg-primary/5 rounded-xl">
-              <span className="material-symbols-outlined text-primary text-lg">flag</span>
-              <span className="text-sm font-bold text-primary">
-                {plan.direction === "north_to_south" ? "Chipping Campden" : "Bath"}
-              </span>
-              <span className="text-[10px] text-secondary ml-auto bg-primary/10 px-2 py-0.5 rounded-full">Start</span>
-            </div>
-
-            {stops.map((stop, i) => {
-              const from = getStartVillage(stops, i, plan.direction);
-              const isLast = i === stops.length - 1;
-              return (
-                <div key={stop.day}>
-                  {/* Connection line */}
-                  <div className="flex items-center gap-3 px-4 py-1.5">
-                    <div className="w-9 flex justify-center">
-                      <div className="w-px h-4 bg-primary/20" />
-                    </div>
-                    <span className="text-[10px] text-secondary">{stop.miles} miles · {stop.difficulty}</span>
-                  </div>
-
-                  {/* Stop card */}
-                  <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
-                    isLast ? "bg-tertiary/5 border-tertiary/20" : "bg-white border-outline-variant/10"
-                  }`}>
-                    <span className={`inline-flex items-center justify-center w-9 h-9 rounded-xl text-sm font-bold shrink-0 ${
-                      isLast ? "bg-tertiary text-white" : "bg-primary/10 text-primary"
-                    }`}>
-                      {isLast ? <span className="material-symbols-outlined text-base">flag</span> : stop.day}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-primary">{stop.village}</p>
-                      <p className="text-[10px] text-secondary">Day {stop.day} · {stop.cumulative}mi total</p>
-                    </div>
-                    <WalkScoreGauge score={stop.walkScore} />
-                    {stops.length > 1 && !isLast && (
-                      <button onClick={() => {
-                        const newStops = stops.filter((_, j) => j !== i);
-                        const renumbered: DayStop[] = newStops.map((s, j) => ({
-                          ...s,
-                          day: j + 1,
-                          miles: j === 0 ? s.cumulative : Math.round((s.cumulative - newStops[j - 1].cumulative) * 10) / 10,
-                        }));
-                        updatePlan({ stops: renumbered, days: renumbered.length });
-                      }}
-                        className="text-secondary hover:text-red-500 transition-colors shrink-0 p-1 rounded-lg hover:bg-red-50">
-                        <span className="material-symbols-outlined text-sm">close</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <button onClick={() => setStep(2)}
-            className="w-full bg-primary text-white py-3.5 rounded-2xl font-bold text-sm shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2">
-            <span className="material-symbols-outlined">arrow_forward</span>
-            View Updated Route
-          </button>
+          <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
+          <CustomisePanel
+            stops={stops}
+            direction={plan.direction}
+            onUpdateStops={(newStops, days) => updatePlan({ stops: newStops, days })}
+            onBack={() => setStep(2)}
+            onHighlightDays={setHighlightDays}
+          />
         </div>
       )}
 

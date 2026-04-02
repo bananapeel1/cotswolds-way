@@ -18,6 +18,9 @@ export interface DayStop {
   cumulative: number;   // total miles from start
   difficulty: "easy" | "moderate" | "strenuous";
   walkScore: number;    // 1-10 fatigue score
+  transfer?: boolean;   // bus/taxi instead of walking
+  restDay?: boolean;    // rest day, 0 miles, same village
+  note?: string;        // user note for this stop
 }
 
 export interface Connection {
@@ -201,7 +204,7 @@ export function getDifficulty(miles: number, elevationFt: number): "easy" | "mod
 }
 
 /** Find the elevation gain for a segment between two villages */
-function findSegmentElevation(from: string, to: string): number {
+export function findSegmentElevation(from: string, to: string): number {
   // Try exact match in TRAIL_SEGMENTS
   const seg = TRAIL_SEGMENTS.find(s => s.from === from && s.to === to);
   if (seg) return seg.elevationFt;
@@ -371,4 +374,192 @@ export function getDayMileRange(stops: DayStop[], dayIndex: number, direction: "
   const startMile = Math.min(startV.mile, endV.mile);
   const endMile = Math.max(startV.mile, endV.mile);
   return [startMile, endMile];
+}
+
+// ─── Customise helpers ──────────────────────────────────────────────────────
+
+function progressMile(village: Village, direction: "north_to_south" | "south_to_north"): number {
+  return direction === "north_to_south" ? village.mile : 102 - village.mile;
+}
+
+/** Get available villages between two stops (for add-stop dropdown) */
+export function getVillagesBetween(
+  fromVillage: string,
+  toVillage: string,
+  direction: "north_to_south" | "south_to_north",
+  exclude: Set<string>
+): Village[] {
+  const fromV = VILLAGES.find(v => v.name === fromVillage);
+  const toV = VILLAGES.find(v => v.name === toVillage);
+  if (!fromV || !toV) return [];
+
+  const fromProg = progressMile(fromV, direction);
+  const toProg = progressMile(toV, direction);
+
+  return VILLAGES.filter(v => {
+    if (exclude.has(v.name)) return false;
+    const p = progressMile(v, direction);
+    return p > fromProg && p < toProg;
+  }).sort((a, b) => progressMile(a, direction) - progressMile(b, direction));
+}
+
+/** Helper: rebuild a stop entry with correct miles and walkScore */
+function buildStop(village: string, prevVillage: string, day: number, direction: "north_to_south" | "south_to_north"): DayStop {
+  const v = VILLAGES.find(x => x.name === village);
+  const pv = VILLAGES.find(x => x.name === prevVillage);
+  const cumul = v ? progressMile(v, direction) : 0;
+  const prevCumul = pv ? progressMile(pv, direction) : 0;
+  const miles = Math.round((cumul - prevCumul) * 10) / 10;
+  const difficulty = DIFFICULTY_MAP[village] || "moderate";
+  const elevationFt = findSegmentElevation(prevVillage, village);
+  return {
+    day,
+    village,
+    miles,
+    cumulative: Math.round(cumul * 10) / 10,
+    difficulty,
+    walkScore: computeWalkScore(miles, elevationFt, difficulty),
+  };
+}
+
+/** Renumber and recalculate all stops */
+function renumberStops(stops: DayStop[], direction: "north_to_south" | "south_to_north"): DayStop[] {
+  const startVillageName = direction === "north_to_south" ? "Chipping Campden" : "Bath";
+  return stops.map((s, i) => {
+    if (s.restDay || s.transfer) {
+      return { ...s, day: i + 1 };
+    }
+    const prev = i === 0 ? startVillageName : stops[i - 1].village;
+    const rebuilt = buildStop(s.village, prev, i + 1, direction);
+    return { ...rebuilt, note: s.note, restDay: s.restDay, transfer: s.transfer };
+  });
+}
+
+/** Insert a new village stop, returns renumbered array */
+export function insertStopAtVillage(
+  stops: DayStop[],
+  villageName: string,
+  direction: "north_to_south" | "south_to_north"
+): DayStop[] {
+  const v = VILLAGES.find(x => x.name === villageName);
+  if (!v) return stops;
+
+  const vProg = progressMile(v, direction);
+
+  // Find insertion index
+  let insertIdx = stops.length;
+  for (let i = 0; i < stops.length; i++) {
+    if (stops[i].restDay) continue;
+    const sv = VILLAGES.find(x => x.name === stops[i].village);
+    if (sv && progressMile(sv, direction) > vProg) {
+      insertIdx = i;
+      break;
+    }
+  }
+
+  const placeholder: DayStop = { day: 0, village: villageName, miles: 0, cumulative: 0, difficulty: "moderate", walkScore: 0 };
+  const newStops = [...stops.slice(0, insertIdx), placeholder, ...stops.slice(insertIdx)];
+  return renumberStops(newStops, direction);
+}
+
+/** Simulate removing a stop — returns warning if the merged day is hard */
+export function removeStopWithWarning(
+  stops: DayStop[],
+  index: number,
+  direction: "north_to_south" | "south_to_north"
+): { stops: DayStop[]; warning: { day: number; miles: number; walkScore: number } | null } {
+  // Rest days can be removed without warning
+  if (stops[index].restDay) {
+    const newStops = stops.filter((_, i) => i !== index);
+    return { stops: renumberStops(newStops, direction), warning: null };
+  }
+
+  const newStops = stops.filter((_, i) => i !== index);
+  const renumbered = renumberStops(newStops, direction);
+
+  // Check the day that absorbed the removed stop's miles
+  // It's the stop at the same index (or the last one if we removed the last)
+  const affectedIdx = Math.min(index, renumbered.length - 1);
+  const affected = renumbered[affectedIdx];
+
+  if (affected && !affected.restDay && !affected.transfer && affected.walkScore >= 8) {
+    return {
+      stops: renumbered,
+      warning: { day: affected.day, miles: affected.miles, walkScore: affected.walkScore },
+    };
+  }
+
+  return { stops: renumbered, warning: null };
+}
+
+/** Split a hard day by inserting an intermediate village */
+export function splitDay(
+  stops: DayStop[],
+  dayIndex: number,
+  direction: "north_to_south" | "south_to_north"
+): DayStop[] | null {
+  const stop = stops[dayIndex];
+  if (!stop || stop.restDay) return null;
+
+  const fromVillage = getStartVillage(stops, dayIndex, direction);
+  const usedNames = new Set(stops.map(s => s.village));
+  usedNames.add(direction === "north_to_south" ? "Chipping Campden" : "Bath");
+
+  const candidates = getVillagesBetween(fromVillage, stop.village, direction, usedNames);
+  if (candidates.length === 0) return null;
+
+  // Pick the village closest to the midpoint
+  const fromV = VILLAGES.find(v => v.name === fromVillage);
+  const toV = VILLAGES.find(v => v.name === stop.village);
+  if (!fromV || !toV) return null;
+
+  const midProg = (progressMile(fromV, direction) + progressMile(toV, direction)) / 2;
+  let bestCandidate = candidates[0];
+  let bestDist = Infinity;
+  for (const c of candidates) {
+    const d = Math.abs(progressMile(c, direction) - midProg);
+    if (d < bestDist) { bestDist = d; bestCandidate = c; }
+  }
+
+  return insertStopAtVillage(stops, bestCandidate.name, direction);
+}
+
+/** Insert a rest day after a given stop */
+export function insertRestDay(stops: DayStop[], afterIndex: number): DayStop[] {
+  const prevStop = stops[afterIndex];
+  if (!prevStop) return stops;
+
+  const restStop: DayStop = {
+    day: 0,
+    village: prevStop.village,
+    miles: 0,
+    cumulative: prevStop.cumulative,
+    difficulty: "easy",
+    walkScore: 0,
+    restDay: true,
+  };
+
+  const newStops = [...stops.slice(0, afterIndex + 1), restStop, ...stops.slice(afterIndex + 1)];
+  // Simple renumber (rest days don't affect mile calculations)
+  return newStops.map((s, i) => ({ ...s, day: i + 1 }));
+}
+
+/** Toggle transfer flag on a stop */
+export function markTransfer(
+  stops: DayStop[],
+  dayIndex: number,
+  isTransfer: boolean,
+  direction: "north_to_south" | "south_to_north"
+): DayStop[] {
+  return stops.map((s, i) => {
+    if (i !== dayIndex) return s;
+    if (isTransfer) {
+      return { ...s, transfer: true, walkScore: 0 };
+    }
+    // Un-transfer: recalculate walkScore
+    const prev = getStartVillage(stops, i, direction);
+    const elevationFt = findSegmentElevation(prev, s.village);
+    const difficulty = DIFFICULTY_MAP[s.village] || "moderate";
+    return { ...s, transfer: false, walkScore: computeWalkScore(s.miles, elevationFt, difficulty) };
+  });
 }

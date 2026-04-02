@@ -7,11 +7,11 @@ import type { DayStop } from "@/lib/plan-engine";
 export default function ElevationProfile({
   stops,
   direction,
-  highlightDay,
+  highlightDays,
 }: {
   stops: DayStop[];
   direction: "north_to_south" | "south_to_north";
-  highlightDay?: number;
+  highlightDays?: number[];
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; mile: number; elev: number; visible: boolean }>({
@@ -38,8 +38,10 @@ export default function ElevationProfile({
     `${i === 0 ? "M" : "L"}${toX(m).toFixed(1)},${toY(e).toFixed(1)}`
   ).join(" ");
 
-  // Day boundaries from cumulative miles
-  const dayBoundaries: { day: number; mile: number }[] = stops.map(s => ({ day: s.day, mile: s.cumulative }));
+  // Day boundaries from cumulative miles (skip rest days with 0 width)
+  const dayBoundaries: { day: number; mile: number; isTransfer?: boolean; isRest?: boolean }[] = stops.map(s => ({
+    day: s.day, mile: s.cumulative, isTransfer: s.transfer, isRest: s.restDay,
+  }));
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
@@ -80,15 +82,20 @@ export default function ElevationProfile({
         {/* Day boundary shading */}
         {dayBoundaries.map((b, i) => {
           const prevMile = i === 0 ? 0 : dayBoundaries[i - 1].mile;
-          const isHighlighted = highlightDay === b.day;
+          const isHighlighted = highlightDays?.includes(b.day);
+          const fillColor = b.isTransfer
+            ? "rgba(100,100,100,0.08)"
+            : isHighlighted
+              ? "rgba(21,66,18,0.12)"
+              : i % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent";
           return (
             <rect
               key={b.day}
               x={toX(prevMile)}
               y={pad.top}
-              width={toX(b.mile) - toX(prevMile)}
+              width={Math.max(0, toX(b.mile) - toX(prevMile))}
               height={innerH}
-              fill={isHighlighted ? "rgba(21,66,18,0.08)" : i % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent"}
+              fill={fillColor}
             />
           );
         })}
@@ -115,10 +122,12 @@ export default function ElevationProfile({
         {dayBoundaries.map((b, i) => {
           const prevMile = i === 0 ? 0 : dayBoundaries[i - 1].mile;
           const midX = (toX(prevMile) + toX(b.mile)) / 2;
+          const width = toX(b.mile) - toX(prevMile);
+          if (width < 15) return null; // skip labels for tiny segments (rest days)
           return (
             <text key={`label-${b.day}`} x={midX} y={pad.top + innerH + 14} textAnchor="middle"
-              fill="#665d4e" fontSize="8" fontWeight="700">
-              D{b.day}
+              fill={b.isTransfer ? "#666" : "#665d4e"} fontSize="8" fontWeight="700">
+              {b.isTransfer ? "🚌" : b.isRest ? "💤" : `D${b.day}`}
             </text>
           );
         })}

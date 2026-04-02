@@ -27,6 +27,43 @@ export default function PrintableDayCards({
         const from = getStartVillage(stops, i, direction);
         const conn = connections[i];
 
+        // Rest day
+        if (stop.restDay) {
+          return (
+            <div key={stop.day} className="print-card mb-4 border border-blue-200 rounded-lg p-5 bg-blue-50">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-200 text-blue-800 font-bold text-sm">
+                  {stop.day}
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-blue-800">Rest day in {stop.village}</h2>
+                  <p className="text-sm text-blue-600">0 miles · Relax and explore the village</p>
+                </div>
+              </div>
+              {stop.note && <p className="text-sm italic text-gray-600 mt-2">{stop.note}</p>}
+            </div>
+          );
+        }
+
+        // Transfer day
+        if (stop.transfer) {
+          return (
+            <div key={stop.day} className="print-card mb-4 border border-gray-200 rounded-lg p-5 bg-gray-50">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-300 text-gray-700 font-bold text-sm">
+                  {stop.day}
+                </span>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-700">Transfer: {from} → {stop.village}</h2>
+                  <p className="text-sm text-gray-500">{stop.miles} miles by bus/taxi</p>
+                </div>
+              </div>
+              {stop.note && <p className="text-sm italic text-gray-600 mt-2">{stop.note}</p>}
+            </div>
+          );
+        }
+
+        // Regular walking day
         return (
           <div key={stop.day} className="print-card mb-4 border border-gray-300 rounded-lg p-5">
             <div className="flex items-center justify-between mb-3">
@@ -52,6 +89,8 @@ export default function PrintableDayCards({
               <span>Remaining: {(102 - stop.cumulative).toFixed(1)}mi</span>
               <span>Weather: {weather.tempLow}–{weather.tempHigh}°C</span>
             </div>
+
+            {stop.note && <p className="text-sm italic text-gray-600 mt-2 border-t border-gray-200 pt-2">{stop.note}</p>}
           </div>
         );
       })}
