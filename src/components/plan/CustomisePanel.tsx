@@ -7,6 +7,7 @@ import {
   removeStopWithWarning, splitDay, insertRestDay, markTransfer,
 } from "@/lib/plan-engine";
 import WalkScoreGauge from "./WalkScoreGauge";
+import { useUnits } from "@/contexts/UnitContext";
 
 export default function CustomisePanel({
   stops,
@@ -21,6 +22,7 @@ export default function CustomisePanel({
   onBack: () => void;
   onHighlightDays: (days: number[]) => void;
 }) {
+  const { formatDistance } = useUnits();
   const [removeWarning, setRemoveWarning] = useState<{ index: number; day: number; miles: number; walkScore: number } | null>(null);
   const [addStopOpenAt, setAddStopOpenAt] = useState<number | null>(null);
   const [expandedNote, setExpandedNote] = useState<number | null>(null);
@@ -102,7 +104,7 @@ export default function CustomisePanel({
         <div className="absolute left-[19px] top-0 bottom-0 w-0.5 bg-cream-dark" />
 
         <span className="relative z-10 text-xs text-stone bg-cream px-2.5 py-0.5 rounded-full tabular-nums" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {miles > 0 ? `${miles} mi` : ""}
+          {miles > 0 ? formatDistance(miles) : ""}
         </span>
 
         <div className="flex items-center gap-1.5 ml-auto">
@@ -185,7 +187,7 @@ export default function CustomisePanel({
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-blue-800">Rest day in {stop.village}</p>
-                    <p className="text-[10px] text-blue-600">Day {stop.day} · 0 miles</p>
+                    <p className="text-[10px] text-blue-600">Day {stop.day} · {formatDistance(0)}</p>
                   </div>
                   <button onClick={() => handleRemove(i)}
                     className="text-blue-400 hover:text-red-500 transition-colors shrink-0 p-1 rounded-lg hover:bg-red-50">
@@ -198,7 +200,7 @@ export default function CustomisePanel({
                   <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center text-xs">📍</div>
                   <h4 className="text-base font-semibold" style={{ fontFamily: "var(--font-serif)" }}>{stop.village}</h4>
                   <span className="ml-auto text-[11px] uppercase tracking-wider text-white/60 font-medium">
-                    Day {stop.day} · {stop.cumulative}mi total
+                    Day {stop.day} · {formatDistance(stop.cumulative)} total
                   </span>
                 </div>
               ) : (
@@ -215,7 +217,7 @@ export default function CustomisePanel({
                     <div className="flex-1 min-w-0">
                       <h4 className="text-base font-semibold text-ink" style={{ fontFamily: "var(--font-serif)" }}>{stop.village}</h4>
                       <span className="text-xs text-stone">
-                        Day {stop.day} · {stop.transfer ? "Transfer" : `${stop.miles}mi`} · {stop.cumulative}mi total
+                        Day {stop.day} · {stop.transfer ? "Transfer" : formatDistance(stop.miles)} · {formatDistance(stop.cumulative)} total
                       </span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -280,7 +282,7 @@ export default function CustomisePanel({
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <p className="text-xs text-amber-800 font-bold mb-2">
                         <span className="material-symbols-outlined text-sm align-text-bottom mr-1">warning</span>
-                        This would make Day {removeWarning.day} a {removeWarning.miles}-mile day (score {removeWarning.walkScore}/10)
+                        This would make Day {removeWarning.day} a {formatDistance(removeWarning.miles)} day (score {removeWarning.walkScore}/10)
                       </p>
                       <div className="flex gap-2">
                         <button onClick={confirmRemove}

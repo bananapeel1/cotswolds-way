@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import UnitToggle from "@/components/UnitToggle";
 
 const mainLinks = [
   { href: "/", label: "Home", icon: "home" },
@@ -112,8 +113,9 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Desktop right — map icon */}
-        <div className="hidden lg:flex items-center">
+        {/* Desktop right — unit toggle + map icon */}
+        <div className="hidden lg:flex items-center gap-3">
+          <UnitToggle />
           <Link
             href="/search"
             className="w-10 h-10 flex items-center justify-center text-primary hover:text-primary/70 transition-colors"
@@ -176,6 +178,9 @@ export default function Navbar() {
           </div>
 
           <div className="flex flex-col gap-3 px-6 pb-10 pt-4 border-t border-outline-variant/20">
+            <div className="flex justify-center mb-2">
+              <UnitToggle />
+            </div>
             <Link
               href="/search"
               onClick={() => setMobileMenuOpen(false)}

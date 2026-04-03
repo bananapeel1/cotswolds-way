@@ -1,4 +1,7 @@
+"use client";
+
 import { type DayStop, type Connection, WEATHER_DATA, getStartVillage } from "@/lib/plan-engine";
+import { useUnits } from "@/contexts/UnitContext";
 
 export default function PrintableDayCards({
   stops,
@@ -12,6 +15,7 @@ export default function PrintableDayCards({
   month: number;
 }) {
   const weather = WEATHER_DATA[month];
+  const { formatDistance, formatElevation, formatTempRange } = useUnits();
 
   return (
     <div className="hidden print:block">
@@ -20,7 +24,7 @@ export default function PrintableDayCards({
       </h1>
       <p className="text-sm text-secondary mb-6 print:text-gray-600">
         {direction === "north_to_south" ? "Chipping Campden → Bath" : "Bath → Chipping Campden"}
-        {" · "}{weather.month} · {weather.tempLow}–{weather.tempHigh}°C
+        {" · "}{weather.month} · {formatTempRange(weather.tempLow, weather.tempHigh)}
       </p>
 
       {stops.map((stop, i) => {
@@ -37,7 +41,7 @@ export default function PrintableDayCards({
                 </span>
                 <div>
                   <h2 className="text-lg font-bold text-blue-800">Rest day in {stop.village}</h2>
-                  <p className="text-sm text-blue-600">0 miles · Relax and explore the village</p>
+                  <p className="text-sm text-blue-600">{formatDistance(0)} · Relax and explore the village</p>
                 </div>
               </div>
               {stop.note && <p className="text-sm italic text-gray-600 mt-2">{stop.note}</p>}
@@ -55,7 +59,7 @@ export default function PrintableDayCards({
                 </span>
                 <div>
                   <h2 className="text-lg font-bold text-gray-700">Transfer: {from} → {stop.village}</h2>
-                  <p className="text-sm text-gray-500">{stop.miles} miles by bus/taxi</p>
+                  <p className="text-sm text-gray-500">{formatDistance(stop.miles)} by bus/taxi</p>
                 </div>
               </div>
               {stop.note && <p className="text-sm italic text-gray-600 mt-2">{stop.note}</p>}
@@ -74,7 +78,7 @@ export default function PrintableDayCards({
                 <div>
                   <h2 className="text-lg font-bold">{from} → {stop.village}</h2>
                   <p className="text-sm text-gray-600">
-                    {stop.miles} miles · {conn?.elevationGain || 0}ft ascent · {conn?.walkTime || "—"}
+                    {formatDistance(stop.miles)} · {formatElevation(conn?.elevationGain || 0)} ascent · {conn?.walkTime || "—"}
                   </p>
                 </div>
               </div>
@@ -85,9 +89,9 @@ export default function PrintableDayCards({
             </div>
 
             <div className="flex gap-4 text-xs text-gray-600">
-              <span>Cumulative: {stop.cumulative}mi</span>
-              <span>Remaining: {(102 - stop.cumulative).toFixed(1)}mi</span>
-              <span>Weather: {weather.tempLow}–{weather.tempHigh}°C</span>
+              <span>Cumulative: {formatDistance(stop.cumulative)}</span>
+              <span>Remaining: {formatDistance(102 - stop.cumulative)}</span>
+              <span>Weather: {formatTempRange(weather.tempLow, weather.tempHigh)}</span>
             </div>
 
             {stop.note && <p className="text-sm italic text-gray-600 mt-2 border-t border-gray-200 pt-2">{stop.note}</p>}

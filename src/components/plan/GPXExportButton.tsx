@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { loadTrailData, sliceTrailForDay, coordinatesToGPX, downloadGPX } from "@/lib/gpx-utils";
+import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
   id: number;
@@ -28,6 +29,7 @@ export default function GPXExportButton({
   pois: POI[];
 }) {
   const [loading, setLoading] = useState(false);
+  const { formatDistance } = useUnits();
 
   async function handleExport() {
     setLoading(true);
@@ -43,7 +45,7 @@ export default function GPXExportButton({
 
       const gpx = coordinatesToGPX(dayCoords, waypoints, {
         name: `Cotswold Way Day ${dayNumber}: ${fromVillage} to ${toVillage}`,
-        description: `${(endMile - startMile).toFixed(1)} miles along the Cotswold Way`,
+        description: `${formatDistance(endMile - startMile)} along the Cotswold Way`,
       });
 
       const filename = `cotswold-way-day-${dayNumber}-${fromVillage.toLowerCase().replace(/\s+/g, "-")}-to-${toVillage.toLowerCase().replace(/\s+/g, "-")}.gpx`;

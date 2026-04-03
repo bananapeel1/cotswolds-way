@@ -1,4 +1,7 @@
+"use client";
+
 import { autoStops, estimateCosts, type PlanState } from "@/lib/plan-engine";
+import { useUnits } from "@/contexts/UnitContext";
 
 export default function WhatIfComparison({
   currentPlan,
@@ -7,6 +10,7 @@ export default function WhatIfComparison({
   currentPlan: PlanState;
   onSelectDays: (days: number) => void;
 }) {
+  const { formatDistance } = useUnits();
   const variants = [7, 10, 14].map(days => {
     const stops = autoStops(days, currentPlan.direction);
     const hardestDay = stops.reduce((max, s) => s.walkScore > max.walkScore ? s : max, stops[0]);
@@ -42,7 +46,7 @@ export default function WhatIfComparison({
               <div className="mt-2 space-y-1 text-[10px]">
                 <div className="flex justify-between">
                   <span className="text-secondary">Avg/day</span>
-                  <span className="font-bold text-primary">{v.avgMiles}mi</span>
+                  <span className="font-bold text-primary">{formatDistance(v.avgMiles)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-secondary">Hardest</span>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Manrope, Newsreader } from "next/font/google";
+import { UnitProvider } from "@/contexts/UnitContext";
 import "./globals.css";
 
 const inter = Inter({
@@ -118,7 +119,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col font-body bg-background text-on-surface">
-        {children}
+        <UnitProvider>{children}</UnitProvider>
       </body>
     </html>
   );

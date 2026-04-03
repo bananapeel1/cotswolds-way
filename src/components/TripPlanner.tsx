@@ -16,6 +16,7 @@ import CostEstimator from "@/components/plan/CostEstimator";
 import GPXExportButton from "@/components/plan/GPXExportButton";
 import PrintableDayCards from "@/components/plan/PrintableDayCards";
 import CustomisePanel from "@/components/plan/CustomisePanel";
+import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
   id: number; type: string; name: string;
@@ -42,6 +43,7 @@ export default function TripPlanner() {
   const [highlightDays, setHighlightDays] = useState<number[]>([]);
   const [shareToast, setShareToast] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
+  const { formatDistance, formatElevation, formatElevationM, formatTemp, formatTempRange, trailTotal, distanceUnit } = useUnits();
   // UI-only preference toggles (no data model backing yet)
   const [accessibleStops, setAccessibleStops] = useState(false);
   const [diningNearby, setDiningNearby] = useState(false);
@@ -218,8 +220,8 @@ export default function TripPlanner() {
               </div>
               <div className="flex justify-between items-center pt-4 border-t border-cream">
                 <div className="text-center">
-                  <div className="text-xl font-medium text-forest-deep tabular-nums">{avgMiles}</div>
-                  <div className="text-[11px] text-stone uppercase tracking-wider mt-0.5">mi / day</div>
+                  <div className="text-xl font-medium text-forest-deep tabular-nums">{formatDistance(avgMiles).split(" ")[0]}</div>
+                  <div className="text-[11px] text-stone uppercase tracking-wider mt-0.5">{distanceUnit} / day</div>
                 </div>
                 <div className="text-center">
                   <div className="text-xl font-medium text-forest-deep">{paceLabel}</div>
@@ -263,7 +265,7 @@ export default function TripPlanner() {
               </div>
               <div className="mt-3.5 pt-3 border-t border-cream text-[13px] text-stone flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm">{RAINFALL_ICON[weather.rainfall]}</span>
-                {MONTHS[plan.month]}: {weather.tempLow}–{weather.tempHigh}°C, {weather.rainfall} rainfall
+                {MONTHS[plan.month]}: {formatTempRange(weather.tempLow, weather.tempHigh)}, {weather.rainfall} rainfall
               </div>
             </div>
 
@@ -340,7 +342,7 @@ export default function TripPlanner() {
               {plan.days}-Day Walk
             </h2>
             <div className="flex items-center justify-center gap-4 text-[13px] text-stone mt-1.5 flex-wrap">
-              <span>102 miles</span>
+              <span>{trailTotal}</span>
               <span>·</span>
               <span>{MONTHS[plan.month]}</span>
               <span>·</span>
@@ -348,7 +350,7 @@ export default function TripPlanner() {
             </div>
             <div className="flex justify-center gap-2 mt-4 flex-wrap">
               <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium bg-forest/6 text-forest">
-                🥾 {avgMiles} mi/day
+                🥾 {formatDistance(avgMiles)}/day
               </span>
               <span className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium ${
                 bookedNights === totalNights && totalNights > 0 ? "bg-forest/6 text-forest" : "bg-terracotta/8 text-terracotta"
@@ -356,7 +358,7 @@ export default function TripPlanner() {
                 🛏️ {bookedNights}/{totalNights} nights booked
               </span>
               <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium bg-amber-warm/8 text-brass-dark">
-                ☀️ {weather.tempLow}–{weather.tempHigh}°C
+                ☀️ {formatTempRange(weather.tempLow, weather.tempHigh)}
               </span>
             </div>
           </div>
@@ -367,7 +369,7 @@ export default function TripPlanner() {
               <h4 className="text-xs font-semibold uppercase tracking-wider text-stone flex items-center gap-1.5">
                 ⛰️ Elevation Profile
               </h4>
-              <span className="text-xs text-stone-light">Highest: Cleeve Hill 330m</span>
+              <span className="text-xs text-stone-light">Highest: Cleeve Hill {formatElevationM(330)}</span>
             </div>
             <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
           </div>
@@ -410,8 +412,8 @@ export default function TripPlanner() {
                         {from} → {stop.village}
                       </h3>
                       <div className="flex items-center gap-3 text-xs text-stone flex-wrap">
-                        <span>{stop.miles} mi</span>
-                        <span>{conn?.elevationGain || 0} ft ↑</span>
+                        <span>{formatDistance(stop.miles)}</span>
+                        <span>{formatElevation(conn?.elevationGain || 0)} ↑</span>
                         <span>{conn?.walkTime || "—"}</span>
                         <span className={`font-semibold px-2 py-0.5 rounded-full text-[11px] tracking-wide ${diffClass}`}>
                           {diffLabel}
@@ -514,7 +516,7 @@ export default function TripPlanner() {
               <h4 className="text-xs font-semibold uppercase tracking-wider text-stone flex items-center gap-1.5">
                 ⛰️ Elevation Profile
               </h4>
-              <span className="text-xs text-stone-light">Highest: Cleeve Hill 330m</span>
+              <span className="text-xs text-stone-light">Highest: Cleeve Hill {formatElevationM(330)}</span>
             </div>
             <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
           </div>

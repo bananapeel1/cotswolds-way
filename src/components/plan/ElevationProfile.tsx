@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { ELEVATION_POINTS } from "@/lib/plan-engine";
 import type { DayStop } from "@/lib/plan-engine";
+import { useUnits } from "@/contexts/UnitContext";
 
 export default function ElevationProfile({
   stops,
@@ -13,6 +14,7 @@ export default function ElevationProfile({
   direction: "north_to_south" | "south_to_north";
   highlightDays?: number[];
 }) {
+  const { formatDistance, formatElevationM, distanceUnit } = useUnits();
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; mile: number; elev: number; visible: boolean }>({
     x: 0, y: 0, mile: 0, elev: 0, visible: false,
@@ -69,7 +71,7 @@ export default function ElevationProfile({
           <span className="material-symbols-outlined text-sm">terrain</span>
           Elevation Profile
         </h3>
-        <span className="text-[10px] text-secondary">Highest point: Cleeve Hill 330m</span>
+        <span className="text-[10px] text-secondary">Highest point: Cleeve Hill {formatElevationM(330)}</span>
       </div>
 
       <svg
@@ -152,7 +154,7 @@ export default function ElevationProfile({
       {/* Tooltip popup */}
       {tooltip.visible && (
         <div className="text-[10px] text-secondary text-center mt-1">
-          Mile {tooltip.mile.toFixed(1)} — {tooltip.elev}m elevation
+          {formatDistance(tooltip.mile)} — {formatElevationM(tooltip.elev)} elevation
         </div>
       )}
     </div>

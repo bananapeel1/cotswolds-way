@@ -8,6 +8,7 @@ import {
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
   encodePlanToURL,
 } from "@/lib/plan-engine";
+import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
   id: number; type: string; name: string;
@@ -45,6 +46,8 @@ export default function MyTripSummary() {
   const totalNights = stops.filter(s => !s.restDay).length - 1;
   const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
 
+  const { formatDistance, formatElevation, formatTempRange, trailTotal, trailTotalShort } = useUnits();
+
   if (!hydrated) return null;
 
   if (stops.length === 0) {
@@ -67,16 +70,16 @@ export default function MyTripSummary() {
       <div className="mb-8 print:mb-4 bg-topo">
         <h1 className="text-3xl font-medium text-primary mb-2 print:text-2xl italic" style={{ fontFamily: "var(--font-serif)" }}>My Cotswold Way</h1>
         <p className="text-sm text-secondary mb-4">
-          {plan.days} days · 102 miles · {MONTHS[plan.month]} · {weather.tempLow}–{weather.tempHigh}°C
+          {plan.days} days · {trailTotal} · {MONTHS[plan.month]} · {formatTempRange(weather.tempLow, weather.tempHigh)}
         </p>
 
         {/* Summary stats */}
         <div className="grid grid-cols-4 gap-3 mb-4">
           {[
             { value: plan.days, label: "Days", icon: "calendar_today" },
-            { value: "102mi", label: "Total", icon: "straighten" },
+            { value: trailTotalShort, label: "Total", icon: "straighten" },
             { value: `${bookedNights}/${totalNights}`, label: "Nights booked", icon: "bed" },
-            { value: `${weather.tempLow}–${weather.tempHigh}°C`, label: MONTHS[plan.month].slice(0, 3), icon: RAINFALL_ICON[weather.rainfall] },
+            { value: formatTempRange(weather.tempLow, weather.tempHigh), label: MONTHS[plan.month].slice(0, 3), icon: RAINFALL_ICON[weather.rainfall] },
           ].map((stat, i) => (
             <div key={i} className="bg-white shadow-card rounded-2xl p-4 text-center print:bg-gray-50 print:border print:border-gray-200">
               <div className="w-8 h-8 rounded-full bg-accent-soft flex items-center justify-center mx-auto mb-2 print:hidden">
@@ -142,11 +145,11 @@ export default function MyTripSummary() {
                 <div className="flex-1 min-w-0">
                   <h2 className="font-headline font-bold text-primary text-base">{from} → {stop.village}</h2>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <span className="text-[11px] text-secondary">{stop.miles}mi</span>
+                    <span className="text-[11px] text-secondary">{formatDistance(stop.miles)}</span>
                     {conn && (
                       <>
                         <span className="text-secondary/30">·</span>
-                        <span className="text-[11px] text-secondary">{conn.elevationGain}ft ↑</span>
+                        <span className="text-[11px] text-secondary">{formatElevation(conn.elevationGain)} ↑</span>
                         <span className="text-secondary/30">·</span>
                         <span className="text-[11px] text-secondary">{conn.walkTime}</span>
                       </>
@@ -231,7 +234,7 @@ export default function MyTripSummary() {
                   <div className="flex-1 h-1 bg-outline-variant/15 rounded-full overflow-hidden">
                     <div className="h-full bg-primary/30 rounded-full" style={{ width: `${(stop.cumulative / 102) * 100}%` }} />
                   </div>
-                  <span className="text-[9px] text-secondary font-bold">{stop.cumulative}mi / 102</span>
+                  <span className="text-[9px] text-secondary font-bold">{formatDistance(stop.cumulative)} / {trailTotalShort}</span>
                 </div>
               </div>
             </div>

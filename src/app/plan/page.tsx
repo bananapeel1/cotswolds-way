@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import TripPlanner from "@/components/TripPlanner";
+import TrailTotal from "@/components/TrailTotal";
 
 export const metadata: Metadata = {
   title: "Plan Your Cotswold Way Walk — Itinerary Builder & Route Planner",
@@ -26,7 +27,7 @@ export default function PlanMyHikePage() {
             Plan <em className="italic text-brass-light">Your</em> Walk
           </h1>
           <p className="text-[15px] text-white/55 font-light">
-            102 miles of England&apos;s finest trail. Build your perfect itinerary.
+            <TrailTotal />{" "}of England&apos;s finest trail. Build your perfect itinerary.
           </p>
         </div>
       </section>
