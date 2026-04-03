@@ -11,13 +11,10 @@ import {
 } from "@/lib/plan-engine";
 import { useWishlistStorage } from "@/hooks/useWishlistStorage";
 import ElevationProfile from "@/components/plan/ElevationProfile";
-import WalkScoreGauge from "@/components/plan/WalkScoreGauge";
 import MiniElevation from "@/components/plan/MiniElevation";
-import PubLunchCard from "@/components/plan/PubLunchCard";
 import CostEstimator from "@/components/plan/CostEstimator";
 import GPXExportButton from "@/components/plan/GPXExportButton";
 import PrintableDayCards from "@/components/plan/PrintableDayCards";
-import SavedPoisList from "@/components/plan/SavedPoisList";
 import CustomisePanel from "@/components/plan/CustomisePanel";
 
 interface POI {
@@ -27,10 +24,14 @@ interface POI {
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const DIFFICULTY_COLOUR: Record<string, string> = {
-  easy: "bg-green-100 text-green-800",
-  moderate: "bg-amber-100 text-amber-800",
-  strenuous: "bg-red-100 text-red-800",
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const BEST_MONTHS = new Set([3, 4, 5, 6, 7, 8]); // Apr–Sep
+const MONTH_DOTS: Record<number, number> = { 3: 2, 4: 2, 5: 3, 6: 3, 7: 2, 8: 2, 9: 1 };
+
+const DIFF_STYLE: Record<string, string> = {
+  easy: "bg-forest/8 text-forest-light",
+  moderate: "bg-amber-warm/10 text-amber-warm",
+  strenuous: "bg-terracotta/10 text-terracotta",
 };
 
 export default function TripPlanner() {
@@ -40,8 +41,10 @@ export default function TripPlanner() {
   const [pois, setPois] = useState<POI[]>([]);
   const [highlightDays, setHighlightDays] = useState<number[]>([]);
   const [shareToast, setShareToast] = useState(false);
-  const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [budgetOpen, setBudgetOpen] = useState(false);
+  // UI-only preference toggles (no data model backing yet)
+  const [accessibleStops, setAccessibleStops] = useState(false);
+  const [diningNearby, setDiningNearby] = useState(false);
 
   // Fetch POIs for pub lunch planner
   useEffect(() => {
@@ -84,160 +87,216 @@ export default function TripPlanner() {
   const avgMiles = Math.round(102 / plan.days * 10) / 10;
   const paceLabel = avgMiles > 16 ? "Fast" : avgMiles > 12 ? "Steady" : avgMiles > 8 ? "Relaxed" : "Leisurely";
 
+  function goToStep(n: 1 | 2 | 3) {
+    if (n > 1 && stops.length === 0 && n !== 1) return;
+    setStep(n);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
     <div className="no-print">
-      {/* Step indicator */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-1">
+      {/* ═══ STICKY STEPPER ═══ */}
+      <div className="sticky top-[65px] z-40 -mx-6 px-6 bg-white/95 backdrop-blur-xl border-b border-forest/8">
+        <div className="max-w-[680px] mx-auto flex items-center h-[60px]">
           {[
-            { n: 1, label: "Setup", icon: "settings" },
-            { n: 2, label: "Your Route", icon: "route" },
-            { n: 3, label: "Customise", icon: "tune" },
-          ].map(({ n, label, icon }, idx) => (
-            <div key={n} className="flex items-center">
-              {idx > 0 && <div className={`w-8 h-px mx-1 ${n <= step ? "bg-primary/30" : "bg-outline-variant/20"}`} />}
+            { n: 1 as const, label: "Setup" },
+            { n: 2 as const, label: "Your Route" },
+            { n: 3 as const, label: "Customise" },
+          ].map(({ n, label }, idx) => (
+            <div key={n} className="contents">
+              {idx > 0 && (
+                <div className="w-10 h-px mx-1 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-cream-dark" />
+                  <div
+                    className="absolute inset-y-0 left-0 bg-forest-light transition-all duration-600 ease-out"
+                    style={{ width: step >= n ? "100%" : "0%" }}
+                  />
+                </div>
+              )}
               <button
-                onClick={() => (n <= step || stops.length > 0) ? setStep(n as 1 | 2 | 3) : undefined}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all ${
-                  step === n
-                    ? "bg-primary text-white shadow-sm"
-                    : n < step
-                      ? "bg-primary/10 text-primary hover:bg-primary/15"
-                      : "bg-surface-container-high text-secondary/40"
-                }`}
+                onClick={() => (n <= step || stops.length > 0) ? goToStep(n) : undefined}
+                className="flex-1 flex items-center gap-2.5 py-3 transition-all"
               >
-                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{icon}</span>
-                <span className="hidden sm:inline">{label}</span>
+                <div className={`w-[30px] h-[30px] rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-all duration-400 ${
+                  step === n
+                    ? "bg-forest text-white shadow-[0_2px_8px_rgba(45,90,61,0.25)]"
+                    : n < step
+                      ? "bg-forest-light text-white"
+                      : "border-[1.5px] border-cream-dark text-stone-light"
+                }`}>
+                  {n < step ? (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="2 6 5 9 10 3" />
+                    </svg>
+                  ) : n}
+                </div>
+                <span className={`text-[13px] font-medium transition-colors hidden sm:inline ${
+                  step === n ? "text-forest-deep font-semibold" : n < step ? "text-forest" : "text-stone-light"
+                }`}>
+                  {label}
+                </span>
               </button>
             </div>
           ))}
+
+          {savedLabel && (
+            <span className="ml-auto text-[10px] text-stone-light flex items-center gap-1 shrink-0">
+              <span className="material-symbols-outlined text-xs">cloud_done</span>
+              {savedLabel}
+            </span>
+          )}
         </div>
-        {savedLabel && (
-          <span className="text-[10px] text-secondary/60 flex items-center gap-1">
-            <span className="material-symbols-outlined text-xs">cloud_done</span>
-            {savedLabel}
-          </span>
-        )}
       </div>
 
-      {/* ═══════ Step 1 — Setup ═══════ */}
+      {/* ═══════════════════════════════════════════════════════════════════════
+         STEP 1 — SETUP
+      ═══════════════════════════════════════════════════════════════════════ */}
       {step === 1 && (
-        <div className="max-w-2xl mx-auto space-y-8">
+        <div className="animate-step-in space-y-9 pt-4">
+
           {/* Direction */}
           <div>
-            <label className="text-xs font-bold text-secondary uppercase tracking-widest mb-3 block">Direction</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-3.5">
+              Direction <span className="flex-1 h-px bg-cream-dark" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
-                { value: "north_to_south" as const, label: "North → South", desc: "Chipping Campden to Bath", sub: "Classic route, downhill finish", icon: "south" },
-                { value: "south_to_north" as const, label: "South → North", desc: "Bath to Chipping Campden", sub: "Quieter, ascending finish", icon: "north" },
-              ].map(opt => (
-                <button key={opt.value} onClick={() => updatePlan({ direction: opt.value })}
-                  className={`p-5 rounded-2xl border-2 text-left transition-all ${
-                    plan.direction === opt.value
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-outline-variant/15 hover:border-primary/30 hover:shadow-sm"
-                  }`}>
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className={`material-symbols-outlined text-xl ${plan.direction === opt.value ? "text-primary" : "text-secondary"}`}>{opt.icon}</span>
-                    <span className="font-bold text-primary">{opt.label}</span>
+                { value: "north_to_south" as const, label: "North → South", desc: "Chipping Campden to Bath", tag: "Classic route · Downhill finish", arrow: "↓" },
+                { value: "south_to_north" as const, label: "South → North", desc: "Bath to Chipping Campden", tag: "Quieter · Ascending finish", arrow: "↑" },
+              ].map(opt => {
+                const selected = plan.direction === opt.value;
+                return (
+                  <button key={opt.value} onClick={() => updatePlan({ direction: opt.value })}
+                    className={`relative p-6 rounded-[20px] border-2 text-left transition-all duration-350 overflow-hidden hover:-translate-y-0.5 ${
+                      selected
+                        ? "border-forest bg-gradient-to-br from-white to-forest/3 shadow-[0_0_0_3px_rgba(45,90,61,0.08),0_4px_16px_rgba(45,90,61,0.08)]"
+                        : "border-transparent bg-white hover:border-cream-dark hover:shadow-[0_4px_16px_rgba(45,90,61,0.08)]"
+                    }`}>
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base mb-3.5 transition-all ${
+                      selected ? "bg-forest text-white" : "bg-cream text-forest"
+                    }`}>
+                      {opt.arrow}
+                    </div>
+                    <h3 className="text-lg font-semibold text-ink mb-1" style={{ fontFamily: "var(--font-serif)" }}>{opt.label}</h3>
+                    <p className="text-[13px] text-stone">{opt.desc}</p>
+                    <span className="inline-block mt-2.5 text-[11px] font-medium text-forest-light bg-forest/6 px-2.5 py-0.5 rounded-full tracking-wide">
+                      {opt.tag}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Pace */}
+          <div>
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-3.5">
+              Pace <span className="flex-1 h-px bg-cream-dark" />
+            </div>
+            <div className="bg-white rounded-[20px] p-7 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
+              <div className="flex gap-2 mb-5">
+                {[4, 7, 10, 14].map(d => (
+                  <button key={d} onClick={() => updatePlan({ days: d })}
+                    className={`flex-1 text-center py-3 px-2 rounded-xl border-[1.5px] transition-all duration-300 ${
+                      plan.days === d
+                        ? "border-forest bg-forest"
+                        : "border-cream-dark bg-transparent hover:border-stone-light hover:-translate-y-px"
+                    }`}>
+                    <span className={`text-[22px] font-bold block leading-tight tabular-nums ${
+                      plan.days === d ? "text-white" : "text-ink-light"
+                    }`}>{d}</span>
+                    <span className={`text-[11px] uppercase tracking-wider ${
+                      plan.days === d ? "text-white/70" : "text-stone"
+                    }`}>days</span>
+                  </button>
+                ))}
+              </div>
+              <div className="py-2">
+                <input type="range" min={3} max={14} value={plan.days}
+                  onChange={e => updatePlan({ days: parseInt(e.target.value) })}
+                  className="w-full pace-slider" />
+              </div>
+              <div className="flex justify-between items-center pt-4 border-t border-cream">
+                <div className="text-center">
+                  <div className="text-xl font-medium text-forest-deep tabular-nums">{avgMiles}</div>
+                  <div className="text-[11px] text-stone uppercase tracking-wider mt-0.5">mi / day</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xl font-medium text-forest-deep">{paceLabel}</div>
+                  <div className="text-[11px] text-stone uppercase tracking-wider mt-0.5">pace</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xl font-medium text-forest-deep tabular-nums">{plan.days - 1}</div>
+                  <div className="text-[11px] text-stone uppercase tracking-wider mt-0.5">nights</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Month + Preferences row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Month */}
+            <div className="bg-white rounded-[20px] p-6 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-3">
+                Month
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {MONTH_SHORT.map((m, i) => (
+                  <button key={m} onClick={() => updatePlan({ month: i })}
+                    className={`py-2.5 px-1 rounded-lg text-[13px] font-medium transition-all relative ${
+                      plan.month === i
+                        ? "bg-forest text-white font-semibold shadow-[0_2px_8px_rgba(45,90,61,0.2)]"
+                        : "text-ink-light hover:bg-cream"
+                    }`}>
+                    {m}
+                    {MONTH_DOTS[i] && (
+                      <div className="flex gap-[3px] justify-center mt-1">
+                        {Array.from({ length: MONTH_DOTS[i] }).map((_, j) => (
+                          <span key={j} className={`w-1 h-1 rounded-full ${
+                            plan.month === i ? "bg-white/70" : "bg-forest-light/50"
+                          }`} />
+                        ))}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3.5 pt-3 border-t border-cream text-[13px] text-stone flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm">{RAINFALL_ICON[weather.rainfall]}</span>
+                {MONTHS[plan.month]}: {weather.tempLow}–{weather.tempHigh}°C, {weather.rainfall} rainfall
+              </div>
+            </div>
+
+            {/* Preferences */}
+            <div className="bg-white rounded-[20px] p-6 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-3">
+                Preferences
+              </div>
+              {[
+                { label: "Dog-friendly", desc: "Only show dog-welcome stays", icon: "🐕", on: plan.dogFriendly, toggle: () => updatePlan({ dogFriendly: !plan.dogFriendly }) },
+                { label: "Accessible stops", desc: "Prioritise accessible lodgings", icon: "♿", on: accessibleStops, toggle: () => setAccessibleStops(!accessibleStops) },
+                { label: "Dining nearby", desc: "Stops with restaurants", icon: "🍽️", on: diningNearby, toggle: () => setDiningNearby(!diningNearby) },
+              ].map((pref, i) => (
+                <button key={pref.label} onClick={pref.toggle}
+                  className={`flex items-center gap-3 w-full py-3.5 ${i < 2 ? "border-b border-cream" : ""} text-left`}>
+                  <div className="toggle-track" data-on={pref.on ? "true" : "false"} />
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{pref.icon} {pref.label}</p>
+                    <p className="text-xs text-stone">{pref.desc}</p>
                   </div>
-                  <p className="text-xs text-secondary">{opt.desc}</p>
-                  <p className="text-[10px] text-secondary/60 mt-1">{opt.sub}</p>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Days — visual pace selector */}
-          <div>
-            <label className="text-xs font-bold text-secondary uppercase tracking-widest mb-3 block">
-              Pace — {plan.days} days
-            </label>
-            <div className="bg-surface-container-low rounded-2xl p-5">
-              <div className="flex items-center gap-4 mb-4">
-                {[4, 7, 10, 14].map(d => (
-                  <button key={d} onClick={() => updatePlan({ days: d })}
-                    className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                      plan.days === d
-                        ? "bg-primary text-white shadow-sm"
-                        : "bg-white text-secondary border border-outline-variant/20 hover:border-primary/30"
-                    }`}>
-                    {d}
-                  </button>
-                ))}
-              </div>
-              <input type="range" min={4} max={14} value={plan.days}
-                onChange={e => updatePlan({ days: parseInt(e.target.value) })}
-                className="w-full accent-primary h-2" />
-              <div className="flex items-center justify-between mt-3">
-                <div>
-                  <p className="text-lg font-bold text-primary">{avgMiles} mi/day</p>
-                  <p className="text-[10px] text-secondary">{paceLabel} pace</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-primary">{plan.days - 1} nights</p>
-                  <p className="text-[10px] text-secondary">accommodation needed</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Month + preferences row */}
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Month */}
-            <div>
-              <label className="text-xs font-bold text-secondary uppercase tracking-widest mb-3 block">Month</label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {MONTHS.map((m, i) => {
-                  const w = WEATHER_DATA[i];
-                  const isBest = i >= 4 && i <= 8;
-                  return (
-                    <button key={m} onClick={() => updatePlan({ month: i })}
-                      className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all relative ${
-                        plan.month === i
-                          ? "bg-primary text-white shadow-sm"
-                          : "bg-white text-secondary border border-outline-variant/15 hover:border-primary/30"
-                      }`}>
-                      {m.slice(0, 3)}
-                      {isBest && plan.month !== i && (
-                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[10px] text-secondary mt-2 flex items-center gap-1">
-                <span className="material-symbols-outlined text-xs">{RAINFALL_ICON[weather.rainfall]}</span>
-                {MONTHS[plan.month]}: {weather.tempLow}–{weather.tempHigh}°C, {weather.rainfall} rainfall
-                {(plan.month >= 10 || plan.month <= 1) && " · Pack a torch"}
-              </p>
-            </div>
-
-            {/* Preferences */}
-            <div>
-              <label className="text-xs font-bold text-secondary uppercase tracking-widest mb-3 block">Preferences</label>
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-outline-variant/15 cursor-pointer hover:border-primary/30 transition-all">
-                  <input type="checkbox" checked={plan.dogFriendly} onChange={e => updatePlan({ dogFriendly: e.target.checked })}
-                    className="w-4 h-4 accent-primary rounded" />
-                  <span className="material-symbols-outlined text-base text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>pets</span>
-                  <div>
-                    <p className="text-sm font-bold text-primary">Dog-friendly</p>
-                    <p className="text-[10px] text-secondary">Only show stays that welcome dogs</p>
-                  </div>
-                </label>
-              </div>
-            </div>
-          </div>
-
           {/* Wishlist banner */}
           {wishlistItems.length > 0 && (
-            <div className="bg-tertiary/5 border border-tertiary/20 rounded-2xl p-5 mb-4">
+            <div className="bg-terracotta/5 border border-terracotta/20 rounded-[20px] p-5">
               <div className="flex items-center gap-2 mb-2">
-                <span className="material-symbols-outlined text-base text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
-                <p className="text-sm font-bold text-primary">Build around your saved stays</p>
+                <span className="material-symbols-outlined text-base text-terracotta" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                <p className="text-sm font-bold text-ink">Build around your saved stays</p>
               </div>
-              <p className="text-xs text-secondary mb-3">
+              <p className="text-xs text-stone mb-3">
                 You saved {wishlistItems.length} {wishlistItems.length === 1 ? "property" : "properties"} — {wishlistItems.map(i => i.village).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
               </p>
               <button
@@ -247,7 +306,7 @@ export default function TripPlanner() {
                   clearWishlist();
                   setStep(2);
                 }}
-                className="bg-tertiary text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                className="bg-terracotta text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all flex items-center gap-2"
               >
                 <span className="material-symbols-outlined text-base">auto_awesome</span>
                 Build from wishlist
@@ -257,237 +316,162 @@ export default function TripPlanner() {
 
           {/* Build route CTA */}
           <button onClick={buildRoute}
-            className="w-full btn-primary-gradient text-white py-4 rounded-2xl font-bold text-base shadow-elevated hover:shadow-toast transition-all flex items-center justify-center gap-2 group">
-            <span className="material-symbols-outlined group-hover:translate-x-0.5 transition-transform">arrow_forward</span>
+            className="w-full flex items-center justify-center gap-2.5 py-[18px] px-8 bg-forest text-white rounded-[20px] text-base font-semibold transition-all duration-350 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(45,90,61,0.3)] relative overflow-hidden group mt-2">
             Build My Route
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className="transition-transform group-hover:translate-x-1">
+              <path d="M5 12h12m0 0l-4-4m4 4l-4 4"/>
+            </svg>
           </button>
         </div>
       )}
 
-      {/* ═══════ Step 2 — Your Route ═══════ */}
+      {/* ═══════════════════════════════════════════════════════════════════════
+         STEP 2 — YOUR ROUTE
+      ═══════════════════════════════════════════════════════════════════════ */}
       {step === 2 && stops.length > 0 && (() => {
         const totalNights = stops.filter(s => !s.restDay).length - 1;
         const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
         return (
-        <div className="space-y-6">
-          {/* Hero stat */}
-          <div className="text-center py-2">
-            <p className="text-4xl font-medium text-primary italic" style={{ fontFamily: "var(--font-serif)" }}>
+        <div className="animate-step-in space-y-8 pt-4">
+          {/* Route header */}
+          <div className="text-center mb-2">
+            <h2 className="text-[32px] font-medium text-ink" style={{ fontFamily: "var(--font-serif)" }}>
               {plan.days}-Day Walk
-            </p>
-            <p className="text-sm text-secondary mt-1">
-              102 miles · {MONTHS[plan.month]} · {paceLabel} pace
-            </p>
-            <div className="flex items-center justify-center gap-3 mt-3">
-              <span className="inline-flex items-center gap-1.5 bg-surface-container-low rounded-full px-3 py-1.5 text-xs font-bold text-secondary">
-                <span className="material-symbols-outlined text-sm">speed</span> {avgMiles} mi/day
+            </h2>
+            <div className="flex items-center justify-center gap-4 text-[13px] text-stone mt-1.5 flex-wrap">
+              <span>102 miles</span>
+              <span>·</span>
+              <span>{MONTHS[plan.month]}</span>
+              <span>·</span>
+              <span>{paceLabel} pace</span>
+            </div>
+            <div className="flex justify-center gap-2 mt-4 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium bg-forest/6 text-forest">
+                🥾 {avgMiles} mi/day
               </span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${bookedNights === totalNights && totalNights > 0 ? "bg-primary/10 text-primary" : "bg-accent-soft text-accent"}`}>
-                <span className="material-symbols-outlined text-sm">bed</span> {bookedNights}/{totalNights} nights
+              <span className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium ${
+                bookedNights === totalNights && totalNights > 0 ? "bg-forest/6 text-forest" : "bg-terracotta/8 text-terracotta"
+              }`}>
+                🛏️ {bookedNights}/{totalNights} nights booked
               </span>
-              <span className="inline-flex items-center gap-1.5 bg-surface-container-low rounded-full px-3 py-1.5 text-xs font-bold text-secondary">
-                <span className="material-symbols-outlined text-sm">{RAINFALL_ICON[weather.rainfall]}</span> {weather.tempLow}–{weather.tempHigh}°C
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium bg-amber-warm/8 text-brass-dark">
+                ☀️ {weather.tempLow}–{weather.tempHigh}°C
               </span>
             </div>
           </div>
 
-          {/* Elevation profile */}
-          <div>
-            <p className="text-xs font-medium text-secondary mb-2 italic" style={{ fontFamily: "var(--font-serif)" }}>Trail Elevation</p>
+          {/* Elevation card */}
+          <div className="bg-white rounded-[20px] p-5 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-stone flex items-center gap-1.5">
+                ⛰️ Elevation Profile
+              </h4>
+              <span className="text-xs text-stone-light">Highest: Cleeve Hill 330m</span>
+            </div>
             <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
           </div>
 
-          {/* Timeline day cards */}
-          <div className="relative">
-            {/* Vertical timeline connector */}
-            <div className="absolute left-[22px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-primary/20 via-primary/10 to-primary/5 hidden sm:block" />
+          {/* Day cards */}
+          <div className="flex flex-col gap-3">
+            {stops.map((stop, i) => {
+              const from = getStartVillage(stops, i, plan.direction);
+              const conn = connections[i];
+              const [startMile, endMile] = getDayMileRange(stops, i, plan.direction);
+              const dayPois = pois.filter(p => {
+                const mile = approximateMileFromLat(p.latitude);
+                return mile >= startMile && mile <= endMile;
+              });
+              const isLastDay = i === stops.length - 1;
+              const topLunch = dayPois
+                .filter(p => ["pub", "cafe", "restaurant"].includes(p.type) && p.distanceFromTrail <= 500)
+                .sort((a, b) => a.distanceFromTrail - b.distanceFromTrail)[0] || null;
 
-            <div className="space-y-3">
-              {stops.map((stop, i) => {
-                const from = getStartVillage(stops, i, plan.direction);
-                const conn = connections[i];
-                const [startMile, endMile] = getDayMileRange(stops, i, plan.direction);
-                const dayPois = pois.filter(p => {
-                  const mile = approximateMileFromLat(p.latitude);
-                  return mile >= startMile && mile <= endMile;
-                });
-                const isExpanded = expandedDay === stop.day;
-                const isLastDay = i === stops.length - 1;
+              const diffLabel = stop.walkScore >= 7 ? "Tough" : stop.walkScore >= 4 ? "Moderate" : "Easy";
+              const diffClass = stop.walkScore >= 7 ? "bg-terracotta/10 text-terracotta" : stop.walkScore >= 4 ? "bg-amber-warm/10 text-brass-dark" : "bg-forest/8 text-forest-light";
 
-                // Top lunch pub for at-a-glance display
-                const topLunch = dayPois
-                  .filter(p => ["pub", "cafe", "restaurant"].includes(p.type) && p.distanceFromTrail <= 500)
-                  .sort((a, b) => a.distanceFromTrail - b.distanceFromTrail)[0] || null;
-
-                return (
-                  <div key={stop.day} className="flex gap-3 sm:gap-4"
-                    onMouseEnter={() => setHighlightDays([stop.day])}
-                    onMouseLeave={() => setHighlightDays([])}
-                  >
-                    {/* Timeline badge */}
-                    <div className="relative z-10 shrink-0 hidden sm:flex flex-col items-center">
-                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm shadow-ambient ${
-                        stop.accommodation ? "btn-primary-gradient text-white" : "bg-white border-2 border-primary/20 text-primary"
-                      }`}>
-                        {stop.day}
+              return (
+                <div key={stop.day}
+                  className="bg-white rounded-[20px] border-[1.5px] border-transparent shadow-[0_1px_3px_rgba(30,63,43,0.06)] transition-all duration-300 hover:shadow-[0_4px_16px_rgba(30,63,43,0.08)] hover:-translate-y-px hover:border-forest/8 overflow-hidden"
+                  onMouseEnter={() => setHighlightDays([stop.day])}
+                  onMouseLeave={() => setHighlightDays([])}
+                >
+                  {/* Main row */}
+                  <div className="grid grid-cols-[52px_1fr_auto] items-center gap-4 px-5 py-[18px]">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-medium transition-all ${
+                      stop.accommodation
+                        ? "bg-forest text-white"
+                        : "bg-cream text-forest group-hover:bg-forest group-hover:text-white"
+                    }`} style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {stop.day}
+                    </div>
+                    <div>
+                      <h3 className="text-[17px] font-semibold text-ink mb-1" style={{ fontFamily: "var(--font-serif)" }}>
+                        {from} → {stop.village}
+                      </h3>
+                      <div className="flex items-center gap-3 text-xs text-stone flex-wrap">
+                        <span>{stop.miles} mi</span>
+                        <span>{conn?.elevationGain || 0} ft ↑</span>
+                        <span>{conn?.walkTime || "—"}</span>
+                        <span className={`font-semibold px-2 py-0.5 rounded-full text-[11px] tracking-wide ${diffClass}`}>
+                          {diffLabel}
+                        </span>
                       </div>
                     </div>
-
-                    {/* Card */}
-                    <div className={`flex-1 bg-white rounded-2xl border transition-all ${
-                      isExpanded ? "border-primary/20 shadow-card-hover" : "border-outline-variant/5 shadow-card card-hover-lift"
-                    }`}>
-                      {/* At-a-glance header — always visible */}
-                      <button
-                        onClick={() => setExpandedDay(isExpanded ? null : stop.day)}
-                        className="w-full text-left p-4 card-press"
-                      >
-                        {/* Route + stats */}
-                        <div className="flex items-start gap-3">
-                          {/* Mobile day badge */}
-                          <span className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-xl btn-primary-gradient text-white font-bold text-sm shrink-0 shadow-ambient">
-                            {stop.day}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-primary text-sm" style={{ fontFamily: "var(--font-serif)" }}>
-                              {from} → {stop.village}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1 flex-wrap">
-                              <span className="text-[11px] text-secondary">{stop.miles}mi</span>
-                              <span className="text-secondary/20">·</span>
-                              <span className="text-[11px] text-secondary">{conn?.elevationGain || 0}ft ↑</span>
-                              <span className="text-secondary/20">·</span>
-                              <span className="text-[11px] text-secondary">{conn?.walkTime || "—"}</span>
-                              <WalkScoreGauge score={stop.walkScore} compact />
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <MiniElevation startMile={startMile} endMile={endMile} />
-                            <span className={`material-symbols-outlined text-sm text-secondary/40 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
-                              expand_more
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* At-a-glance: accommodation + lunch */}
-                        <div className="flex items-center gap-3 mt-3 flex-wrap">
-                          {/* Accommodation status */}
-                          {stop.accommodation ? (
-                            <span className="inline-flex items-center gap-1.5 bg-primary/5 rounded-lg px-2.5 py-1.5 text-[11px]">
-                              {stop.accommodation.image && (
-                                <img src={stop.accommodation.image} alt="" className="w-5 h-5 rounded object-cover" />
-                              )}
-                              <span className="font-bold text-primary truncate max-w-[120px]">{stop.accommodation.name}</span>
-                              <span className="material-symbols-outlined text-xs text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                            </span>
-                          ) : !isLastDay && !stop.restDay ? (
-                            <span className="inline-flex items-center gap-1 bg-accent-soft rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-accent">
-                              <span className="material-symbols-outlined text-xs">bed</span>
-                              Find stay
-                            </span>
-                          ) : null}
-
-                          {/* Top lunch */}
-                          {topLunch && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-secondary">
-                              <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>restaurant</span>
-                              {topLunch.name}
-                            </span>
-                          )}
-
-                          {/* Saved POIs count */}
-                          {stop.savedPois && stop.savedPois.length > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-secondary bg-secondary/5 rounded-full px-2 py-0.5">
-                              <span className="material-symbols-outlined text-xs">bookmark</span>
-                              {stop.savedPois.length} saved
-                            </span>
-                          )}
-                        </div>
-                      </button>
-
-                      {/* Expanded detail */}
-                      {isExpanded && (
-                        <div className="px-4 pb-4 space-y-3 border-t border-outline-variant/10 pt-3 animate-slide-up-fade">
-                          <PubLunchCard pubs={dayPois} dayStartMile={startMile} dayEndMile={endMile} approximateMile={approximateMileFromLat} />
-
-                          {conn && (
-                            <div className="flex items-center gap-2 text-[11px] text-secondary">
-                              <span className="material-symbols-outlined text-xs">terrain</span>
-                              {conn.terrain}
-                            </div>
-                          )}
-
-                          {/* Accommodation detail */}
-                          {stop.accommodation ? (
-                            <div className="flex items-center gap-3 p-2.5 rounded-xl bg-primary/5 border border-primary/10">
-                              {stop.accommodation.image && (
-                                <img src={stop.accommodation.image} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <Link href={`/property/${stop.accommodation.slug}`} className="text-xs font-bold text-primary hover:underline truncate block">
-                                  {stop.accommodation.name}
-                                </Link>
-                                <p className="text-[10px] text-secondary capitalize">{stop.accommodation.propertyType} · {stop.accommodation.village}</p>
-                              </div>
-                              <button onClick={() => setAccommodation(stop.day, null)} className="text-secondary hover:text-red-500 shrink-0" title="Remove stay">
-                                <span className="material-symbols-outlined text-sm">close</span>
-                              </button>
-                            </div>
-                          ) : !isLastDay && !stop.restDay ? (
-                            <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
-                              className="flex items-center gap-2 p-3 rounded-xl border-2 border-dashed border-accent/20 hover:border-accent/40 hover:bg-accent-soft transition-colors">
-                              <span className="material-symbols-outlined text-base text-accent">bed</span>
-                              <span className="text-xs font-bold text-accent">Find a stay in {stop.village}</span>
-                            </Link>
-                          ) : null}
-
-                          {stop.savedPois && stop.savedPois.length > 0 && (
-                            <SavedPoisList pois={stop.savedPois} day={stop.day} onRemove={removePoi} />
-                          )}
-
-                          <div className="flex items-center gap-4 pt-2">
-                            <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
-                              className="text-xs font-bold text-primary hover:underline flex items-center gap-1">
-                              <span className="material-symbols-outlined text-sm">bed</span> Find stays
-                            </Link>
-                            <Link href="/explore"
-                              className="text-xs font-bold text-secondary hover:text-primary hover:underline flex items-center gap-1">
-                              <span className="material-symbols-outlined text-sm">explore</span> Explore POIs
-                            </Link>
-                            <GPXExportButton dayNumber={stop.day} fromVillage={from} toVillage={stop.village}
-                              startMile={startMile} endMile={endMile} pois={dayPois} />
-                          </div>
-                        </div>
-                      )}
+                    <div className="hidden sm:block opacity-70">
+                      <MiniElevation startMile={startMile} endMile={endMile} />
                     </div>
                   </div>
-                );
-              })}
-            </div>
+
+                  {/* Action tags */}
+                  <div className="flex gap-1.5 px-5 pb-4 pl-[88px] flex-wrap">
+                    {stop.accommodation ? (
+                      <Link href={`/property/${stop.accommodation.slug}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-forest text-white hover:bg-forest-deep transition-colors">
+                        🛏️ {stop.accommodation.name}
+                      </Link>
+                    ) : !isLastDay && !stop.restDay ? (
+                      <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-forest text-white hover:bg-forest-deep transition-colors">
+                        🛏️ Find stay
+                      </Link>
+                    ) : null}
+                    {topLunch && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-cream-dark text-ink-light bg-cream">
+                        🍴 {topLunch.name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Budget — collapsible */}
-          <div className="bg-white rounded-2xl border border-outline-variant/5 shadow-card overflow-hidden">
+          {/* Budget accordion */}
+          <div className="bg-white rounded-[20px] shadow-[0_1px_3px_rgba(30,63,43,0.06)] overflow-hidden">
             <button onClick={() => setBudgetOpen(!budgetOpen)}
-              className="w-full flex items-center justify-between px-5 py-4 text-left">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-base text-secondary">payments</span>
-                <span className="text-sm font-bold text-primary">Estimated Budget</span>
-              </div>
-              <span className={`material-symbols-outlined text-sm text-secondary transition-transform ${budgetOpen ? "rotate-180" : ""}`}>expand_more</span>
+              className="w-full flex items-center justify-between px-6 py-[18px] text-sm font-semibold text-ink hover:bg-cream transition-colors">
+              <span>💰 Estimated Budget</span>
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"
+                className={`text-stone transition-transform ${budgetOpen ? "rotate-180" : ""}`}>
+                <polyline points="4 6 8 10 12 6"/>
+              </svg>
             </button>
             {budgetOpen && (
-              <div className="px-5 pb-5 animate-slide-up-fade">
+              <div className="px-6 pb-5 animate-slide-up-fade">
                 <CostEstimator days={plan.days} />
               </div>
             )}
           </div>
 
-          {/* Actions bar */}
-          <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-outline-variant/10">
-            <button onClick={() => setStep(3)}
-              className="btn-primary-gradient text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-card hover:shadow-card-hover transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">tune</span> Customise
+          {/* Bottom actions */}
+          <div className="flex items-center gap-2.5 mt-7 flex-wrap">
+            <button onClick={() => goToStep(3)}
+              className="flex-1 flex items-center justify-center gap-2.5 py-[18px] px-8 bg-forest text-white rounded-[20px] text-base font-semibold transition-all duration-350 hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(45,90,61,0.3)] group">
+              Customise Route
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12.22 2.56a2.12 2.12 0 0 1 3 3L7 13.72l-4 1 1-4Z"/>
+              </svg>
             </button>
             <button onClick={() => {
               const url = new URL(window.location.origin + "/my-trip");
@@ -497,20 +481,21 @@ export default function TripPlanner() {
               setShareToast(true);
               setTimeout(() => setShareToast(false), 2000);
             }}
-              className="px-5 py-2.5 rounded-xl font-bold text-sm text-secondary border border-outline-variant/15 shadow-ambient hover:shadow-card transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">{shareToast ? "check" : "share"}</span>
-              {shareToast ? "Copied!" : "Share"}
+              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl text-[13px] font-semibold border-[1.5px] border-cream-dark bg-white text-ink-light hover:border-stone-light hover:shadow-[0_1px_3px_rgba(30,63,43,0.06)] transition-all">
+              {shareToast ? "✓ Copied!" : "Share"}
             </button>
             <button onClick={() => window.print()}
-              className="px-5 py-2.5 rounded-xl font-bold text-sm text-secondary border border-outline-variant/15 shadow-ambient hover:shadow-card transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">print</span> Print
+              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl text-[13px] font-semibold border-[1.5px] border-cream-dark bg-white text-ink-light hover:border-stone-light hover:shadow-[0_1px_3px_rgba(30,63,43,0.06)] transition-all">
+              🖨️ Print
             </button>
             <Link href="/my-trip"
-              className="px-5 py-2.5 rounded-xl font-bold text-sm text-primary border border-primary/20 shadow-ambient hover:shadow-card transition-all flex items-center gap-2">
-              <span className="material-symbols-outlined text-base">summarize</span> My Trip
+              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl text-[13px] font-semibold border-[1.5px] border-forest text-forest hover:bg-forest/4 transition-all">
+              📋 My Trip
             </Link>
-            <button onClick={() => { setStep(1); updatePlan({ stops: [] }); }}
-              className="ml-auto text-xs text-secondary hover:text-red-600 transition-colors flex items-center gap-1">
+          </div>
+          <div className="text-center">
+            <button onClick={() => { goToStep(1); updatePlan({ stops: [] }); }}
+              className="text-xs text-stone hover:text-terracotta transition-colors inline-flex items-center gap-1 mt-1">
               <span className="material-symbols-outlined text-xs">restart_alt</span> Start over
             </button>
           </div>
@@ -518,15 +503,27 @@ export default function TripPlanner() {
         );
       })()}
 
-      {/* ═══════ Step 3 — Customise ═══════ */}
+      {/* ═══════════════════════════════════════════════════════════════════════
+         STEP 3 — CUSTOMISE
+      ═══════════════════════════════════════════════════════════════════════ */}
       {step === 3 && stops.length > 0 && (
-        <div className="max-w-2xl mx-auto space-y-5">
-          <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
+        <div className="animate-step-in space-y-5 pt-4">
+          {/* Elevation mini */}
+          <div className="bg-white rounded-[20px] p-5 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-stone flex items-center gap-1.5">
+                ⛰️ Elevation Profile
+              </h4>
+              <span className="text-xs text-stone-light">Highest: Cleeve Hill 330m</span>
+            </div>
+            <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
+          </div>
+
           <CustomisePanel
             stops={stops}
             direction={plan.direction}
             onUpdateStops={(newStops, days) => updatePlan({ stops: newStops, days })}
-            onBack={() => setStep(2)}
+            onBack={() => goToStep(2)}
             onHighlightDays={setHighlightDays}
           />
         </div>

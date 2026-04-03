@@ -15,18 +15,24 @@ export default function PlanMyHikePage() {
     <>
       <Navbar />
 
-      {/* Compact header */}
-      <section className="bg-topo py-10 px-8">
-        <div className="max-w-3xl mx-auto text-center">
-          <h1 className="text-3xl font-medium text-primary mb-2 italic" style={{ fontFamily: "var(--font-serif)" }}>Plan Your Walk</h1>
-          <p className="text-sm text-secondary">
-            102 miles of England's finest trail. Build your perfect itinerary.
+      {/* Hero header */}
+      <section className="plan-hero py-12 md:py-14 px-8 text-center">
+        <div className="relative z-10 max-w-3xl mx-auto">
+          <span className="inline-flex items-center gap-2 bg-white/6 border border-brass/20 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-brass-light mb-5">
+            <span className="w-1.5 h-1.5 rounded-full bg-brass" />
+            Itinerary Builder
+          </span>
+          <h1 className="text-4xl md:text-[42px] font-medium text-cream leading-tight mb-2.5" style={{ fontFamily: "var(--font-serif)" }}>
+            Plan <em className="italic text-brass-light">Your</em> Walk
+          </h1>
+          <p className="text-[15px] text-white/55 font-light">
+            102 miles of England&apos;s finest trail. Build your perfect itinerary.
           </p>
         </div>
       </section>
 
       {/* Trip Planner */}
-      <section className="max-w-4xl mx-auto px-6 py-8">
+      <section className="max-w-[720px] mx-auto px-6 py-10">
         <TripPlanner />
       </section>
 

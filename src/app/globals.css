@@ -60,6 +60,24 @@
   --color-outline: #727973;
   --color-outline-variant: #c2c8c2;
 
+  /* Redesign palette — "The Curated Rambler" v2 */
+  --color-forest: #2D5A3D;
+  --color-forest-deep: #1E3F2B;
+  --color-forest-light: #3A7350;
+  --color-cream: #F5F0E6;
+  --color-cream-warm: #EDE7D9;
+  --color-cream-dark: #DDD5C4;
+  --color-brass: #C8B88A;
+  --color-brass-light: #D4C89E;
+  --color-brass-dark: #A89A6E;
+  --color-terracotta: #C4654A;
+  --color-terracotta-soft: #D4856E;
+  --color-amber-warm: #D4A843;
+  --color-stone: #8A8578;
+  --color-stone-light: #B5AFA3;
+  --color-ink: #1A1A18;
+  --color-ink-light: #3D3D38;
+
   /* Error */
   --color-error: #ba1a1a;
   --color-error-container: #ffdad6;
@@ -177,4 +195,89 @@ body {
   .print-only { display: block !important; }
   .print-card { break-inside: avoid; page-break-inside: avoid; }
   nav, footer { display: none !important; }
+}
+
+/* ─── Plan Page Redesign ─────────────────────────────────────────────────── */
+
+.plan-hero {
+  background: var(--color-forest-deep);
+  position: relative;
+  overflow: hidden;
+}
+.plan-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 80%, rgba(200,184,138,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(58,115,80,0.15) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Toggle switch */
+.toggle-track {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--color-cream-dark);
+  position: relative;
+  transition: background 0.3s;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
+}
+.toggle-track[data-on="true"] {
+  background: var(--color-forest);
+}
+.toggle-track[data-on="true"]::after {
+  transform: translateX(20px);
+}
+
+/* Pace slider custom styling */
+input[type="range"].pace-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-cream-dark);
+  outline: none;
+}
+input[type="range"].pace-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid var(--color-forest);
+  box-shadow: 0 2px 6px rgba(45,90,61,0.2);
+  cursor: pointer;
+}
+input[type="range"].pace-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid var(--color-forest);
+  box-shadow: 0 2px 6px rgba(45,90,61,0.2);
+  cursor: pointer;
+}
+
+/* Step panel animation */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-step-in {
+  animation: fadeSlideUp 0.5s ease;
 }
