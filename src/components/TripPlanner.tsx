@@ -20,6 +20,8 @@ import PrintableDayCards from "@/components/plan/PrintableDayCards";
 import CustomisePanel from "@/components/plan/CustomisePanel";
 import PlanMap from "@/components/plan/PlanMap";
 import TripPrep from "@/components/plan/TripPrep";
+import DayAmenities from "@/components/plan/DayAmenities";
+import AccommodationPicker from "@/components/plan/AccommodationPicker";
 import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
@@ -478,6 +480,9 @@ export default function TripPlanner() {
                     </div>
                   </div>
 
+                  {/* Per-day amenities + closed-pub warning */}
+                  <DayAmenities pois={dayPois} travelDate={dayDate} />
+
                   {/* Forecast + daylight strip (only when a live forecast is available) */}
                   {fc && weatherDesc && (
                     <div className="flex items-center gap-3 px-5 pb-2 pl-[88px] text-xs text-stone flex-wrap">
@@ -504,25 +509,24 @@ export default function TripPlanner() {
                     </div>
                   )}
 
-                  {/* Action tags */}
-                  <div className="flex gap-1.5 px-5 pb-4 pl-[88px] flex-wrap">
-                    {stop.accommodation ? (
-                      <Link href={`/property/${stop.accommodation.slug}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-forest text-white hover:bg-forest-deep transition-colors">
-                        🛏️ {stop.accommodation.name}
-                      </Link>
-                    ) : !isLastDay && !stop.restDay ? (
-                      <Link href={`/search?village=${encodeURIComponent(stop.village)}&day=${stop.day}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-forest text-white hover:bg-forest-deep transition-colors">
-                        🛏️ Find stay
-                      </Link>
-                    ) : null}
-                    {topLunch && (
+                  {/* Accommodation picker (or lunch badge if last day) */}
+                  {(!isLastDay && !stop.restDay) ? (
+                    <AccommodationPicker
+                      village={stop.village}
+                      day={stop.day}
+                      selected={stop.accommodation}
+                      dogFriendly={plan.dogFriendly}
+                      onSelect={setAccommodation}
+                      onClear={(d) => setAccommodation(d, null)}
+                    />
+                  ) : null}
+                  {topLunch && (
+                    <div className="px-5 pb-4 pl-[88px]">
                       <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-cream-dark text-ink-light bg-cream">
                         🍴 {topLunch.name}
                       </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
