@@ -22,6 +22,7 @@ import PlanMap from "@/components/plan/PlanMap";
 import TripPrep from "@/components/plan/TripPrep";
 import DayAmenities from "@/components/plan/DayAmenities";
 import AccommodationPicker from "@/components/plan/AccommodationPicker";
+import PlansLibrary from "@/components/plan/PlansLibrary";
 import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
@@ -534,6 +535,15 @@ export default function TripPlanner() {
 
           {/* Trip prep: transport, baggage, pack list */}
           <TripPrep stops={stops} direction={plan.direction} startDate={plan.startDate} month={plan.month} />
+
+          {/* Saved snapshots — what-if variations, compare plans */}
+          <PlansLibrary
+            currentPlan={plan}
+            onLoad={(loaded) => {
+              updatePlan(loaded);
+              goToStep(2);
+            }}
+          />
 
           {/* Budget accordion */}
           <div className="bg-white rounded-[20px] shadow-[0_1px_3px_rgba(30,63,43,0.06)] overflow-hidden">
