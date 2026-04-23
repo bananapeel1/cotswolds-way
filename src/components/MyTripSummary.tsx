@@ -6,7 +6,7 @@ import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
   computeConnections, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
-  encodePlanToURL,
+  encodePlanToURL, TRAIL_TOTAL_MILES,
 } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
 
@@ -129,7 +129,7 @@ export default function MyTripSummary() {
           const dayFoodPois = pois
             .filter(p => ["pub", "cafe", "restaurant"].includes(p.type) && p.distanceFromTrail <= 500)
             .filter(p => {
-              const mile = approximateMileFromLat(p.latitude);
+              const mile = approximateMileFromLat(p.latitude, p.longitude);
               return mile >= startMile && mile <= endMile;
             })
             .sort((a, b) => a.distanceFromTrail - b.distanceFromTrail);
@@ -232,7 +232,7 @@ export default function MyTripSummary() {
                 {/* Cumulative progress */}
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1 bg-outline-variant/15 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary/30 rounded-full" style={{ width: `${(stop.cumulative / 102) * 100}%` }} />
+                    <div className="h-full bg-primary/30 rounded-full" style={{ width: `${Math.min(100, (stop.cumulative / TRAIL_TOTAL_MILES) * 100)}%` }} />
                   </div>
                   <span className="text-[9px] text-secondary font-bold">{formatDistance(stop.cumulative)} / {trailTotalShort}</span>
                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { autoStops, estimateCosts, type PlanState } from "@/lib/plan-engine";
+import { autoStops, estimateCosts, TRAIL_TOTAL_MILES, type PlanState } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
 
 export default function WhatIfComparison({
@@ -15,7 +15,7 @@ export default function WhatIfComparison({
     const stops = autoStops(days, currentPlan.direction);
     const hardestDay = stops.reduce((max, s) => s.walkScore > max.walkScore ? s : max, stops[0]);
     const costs = estimateCosts(days - 1);
-    const avgMiles = Math.round((102 / days) * 10) / 10;
+    const avgMiles = Math.round((TRAIL_TOTAL_MILES / days) * 10) / 10;
 
     return { days, stops, hardestDay, costs, avgMiles };
   });

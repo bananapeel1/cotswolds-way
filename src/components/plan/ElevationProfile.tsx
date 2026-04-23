@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import { ELEVATION_POINTS } from "@/lib/plan-engine";
+import { useState, useRef, useCallback, useMemo } from "react";
+import { ELEVATION_POINTS, TRAIL_TOTAL_MILES, TRAIL_HIGHEST_POINT } from "@/lib/plan-engine";
 import type { DayStop } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
 
@@ -14,7 +14,7 @@ export default function ElevationProfile({
   direction: "north_to_south" | "south_to_north";
   highlightDays?: number[];
 }) {
-  const { formatDistance, formatElevationM, distanceUnit } = useUnits();
+  const { formatDistance, formatElevationM } = useUnits();
   const svgRef = useRef<SVGSVGElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; mile: number; elev: number; visible: boolean }>({
     x: 0, y: 0, mile: 0, elev: 0, visible: false,
@@ -25,16 +25,21 @@ export default function ElevationProfile({
   const pad = { left: 8, right: 8, top: 12, bottom: 24 };
   const innerW = W - pad.left - pad.right;
   const innerH = H - pad.top - pad.bottom;
-  const maxElev = 340;
+  // Derive max elevation with 15% headroom from the real profile so the chart
+  // scales to whatever data we have (rather than a magic 340m constant).
+  const maxElev = useMemo(() => {
+    const peak = ELEVATION_POINTS.reduce((a, b) => (b[1] > a ? b[1] : a), 0);
+    return Math.ceil((peak * 1.15) / 20) * 20;
+  }, []);
 
-  const toX = (mile: number) => pad.left + (mile / 102) * innerW;
+  const toX = (mile: number) => pad.left + (mile / TRAIL_TOTAL_MILES) * innerW;
   const toY = (elev: number) => pad.top + innerH - (elev / maxElev) * innerH;
 
   const fillPath =
     ELEVATION_POINTS.map(([m, e], i) =>
       `${i === 0 ? "M" : "L"}${toX(m).toFixed(1)},${toY(e).toFixed(1)}`
     ).join(" ") +
-    ` L${toX(102).toFixed(1)},${(pad.top + innerH).toFixed(1)} L${toX(0).toFixed(1)},${(pad.top + innerH).toFixed(1)} Z`;
+    ` L${toX(TRAIL_TOTAL_MILES).toFixed(1)},${(pad.top + innerH).toFixed(1)} L${toX(0).toFixed(1)},${(pad.top + innerH).toFixed(1)} Z`;
 
   const linePath = ELEVATION_POINTS.map(([m, e], i) =>
     `${i === 0 ? "M" : "L"}${toX(m).toFixed(1)},${toY(e).toFixed(1)}`
@@ -49,7 +54,7 @@ export default function ElevationProfile({
     if (!svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
     const svgX = ((e.clientX - rect.left) / rect.width) * W;
-    const mile = Math.max(0, Math.min(102, ((svgX - pad.left) / innerW) * 102));
+    const mile = Math.max(0, Math.min(TRAIL_TOTAL_MILES, ((svgX - pad.left) / innerW) * TRAIL_TOTAL_MILES));
 
     let nearest = ELEVATION_POINTS[0];
     let minDist = Infinity;
@@ -71,7 +76,7 @@ export default function ElevationProfile({
           <span className="material-symbols-outlined text-sm">terrain</span>
           Elevation Profile
         </h3>
-        <span className="text-[10px] text-secondary">Highest point: Cleeve Hill {formatElevationM(330)}</span>
+        <span className="text-[10px] text-secondary">Highest point: Cleeve Common {formatElevationM(TRAIL_HIGHEST_POINT.elevationM)}</span>
       </div>
 
       <svg
@@ -135,7 +140,7 @@ export default function ElevationProfile({
         })}
 
         {/* Highest point marker */}
-        <circle cx={toX(22.8)} cy={toY(330)} r="3" fill="#541600" />
+        <circle cx={toX(TRAIL_HIGHEST_POINT.mile)} cy={toY(TRAIL_HIGHEST_POINT.elevationM)} r="3" fill="#541600" />
 
         {/* Tooltip crosshair */}
         {tooltip.visible && (

@@ -6,16 +6,20 @@ import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
   autoStops, computeConnections, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
-  encodePlanToURL, planFromWishlist,
+  encodePlanToURL, planFromWishlist, TRAIL_TOTAL_MILES,
   type DayStop,
 } from "@/lib/plan-engine";
 import { useWishlistStorage } from "@/hooks/useWishlistStorage";
+import { useForecast } from "@/hooks/useForecast";
+import { describeWmo, formatLocalTime } from "@/lib/weather";
 import ElevationProfile from "@/components/plan/ElevationProfile";
 import MiniElevation from "@/components/plan/MiniElevation";
 import CostEstimator from "@/components/plan/CostEstimator";
 import GPXExportButton from "@/components/plan/GPXExportButton";
 import PrintableDayCards from "@/components/plan/PrintableDayCards";
 import CustomisePanel from "@/components/plan/CustomisePanel";
+import PlanMap from "@/components/plan/PlanMap";
+import TripPrep from "@/components/plan/TripPrep";
 import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
@@ -69,6 +73,15 @@ export default function TripPlanner() {
   const connections = useMemo(() => stops.length > 0 ? computeConnections(stops, plan.direction) : [], [stops, plan.direction]);
   const weather = WEATHER_DATA[plan.month];
 
+  // Live forecast for the trip dates (if within the 16-day window). Falls back
+  // to monthly climatology (WEATHER_DATA) when outside the window.
+  const forecast = useForecast(plan.startDate, stops.length || plan.days);
+
+  // Stable callback so PlanMap's effect doesn't re-run every parent render.
+  const handleMapHover = useCallback((day: number | null) => {
+    setHighlightDays(day ? [day] : []);
+  }, []);
+
   const buildRoute = useCallback(() => {
     const newStops = autoStops(plan.days, plan.direction);
     updatePlan({ stops: newStops });
@@ -86,7 +99,7 @@ export default function TripPlanner() {
 
   if (!hydrated) return null;
 
-  const avgMiles = Math.round(102 / plan.days * 10) / 10;
+  const avgMiles = Math.round((TRAIL_TOTAL_MILES / plan.days) * 10) / 10;
   const paceLabel = avgMiles > 16 ? "Fast" : avgMiles > 12 ? "Steady" : avgMiles > 8 ? "Relaxed" : "Leisurely";
 
   function goToStep(n: 1 | 2 | 3) {
@@ -237,25 +250,41 @@ export default function TripPlanner() {
 
           {/* Month + Preferences row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Month */}
+            {/* Start date */}
             <div className="bg-white rounded-[20px] p-6 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-3">
-                Month
+                Start date
               </div>
-              <div className="grid grid-cols-4 gap-1.5">
+              <input
+                type="date"
+                value={plan.startDate ?? ""}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) {
+                    updatePlan({ startDate: undefined });
+                    return;
+                  }
+                  const m = new Date(v + "T00:00:00Z").getUTCMonth();
+                  updatePlan({ startDate: v, month: m });
+                }}
+                className="w-full px-3.5 py-2.5 rounded-xl border-[1.5px] border-cream-dark bg-white text-ink text-[15px] font-medium focus:outline-none focus:border-forest transition-colors"
+              />
+              <div className="grid grid-cols-4 gap-1.5 mt-3">
                 {MONTH_SHORT.map((m, i) => (
-                  <button key={m} onClick={() => updatePlan({ month: i })}
-                    className={`py-2.5 px-1 rounded-lg text-[13px] font-medium transition-all relative ${
-                      plan.month === i
+                  <button key={m} onClick={() => updatePlan({ month: i, startDate: undefined })}
+                    title={`Climate averages for ${MONTHS[i]}`}
+                    className={`py-1.5 px-1 rounded-lg text-[11px] font-medium transition-all relative ${
+                      plan.month === i && !plan.startDate
                         ? "bg-forest text-white font-semibold shadow-[0_2px_8px_rgba(45,90,61,0.2)]"
                         : "text-ink-light hover:bg-cream"
                     }`}>
                     {m}
                     {MONTH_DOTS[i] && (
-                      <div className="flex gap-[3px] justify-center mt-1">
+                      <div className="flex gap-[2px] justify-center mt-0.5">
                         {Array.from({ length: MONTH_DOTS[i] }).map((_, j) => (
-                          <span key={j} className={`w-1 h-1 rounded-full ${
-                            plan.month === i ? "bg-white/70" : "bg-forest-light/50"
+                          <span key={j} className={`w-0.5 h-0.5 rounded-full ${
+                            plan.month === i && !plan.startDate ? "bg-white/70" : "bg-forest-light/50"
                           }`} />
                         ))}
                       </div>
@@ -265,7 +294,9 @@ export default function TripPlanner() {
               </div>
               <div className="mt-3.5 pt-3 border-t border-cream text-[13px] text-stone flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm">{RAINFALL_ICON[weather.rainfall]}</span>
-                {MONTHS[plan.month]}: {formatTempRange(weather.tempLow, weather.tempHigh)}, {weather.rainfall} rainfall
+                {plan.startDate
+                  ? `Walk ${plan.startDate} → live forecast`
+                  : `${MONTHS[plan.month]} averages: ${formatTempRange(weather.tempLow, weather.tempHigh)}, ${weather.rainfall} rainfall`}
               </div>
             </div>
 
@@ -363,13 +394,24 @@ export default function TripPlanner() {
             </div>
           </div>
 
+          {/* Interactive route map */}
+          <div className="bg-white rounded-[20px] p-2 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
+            <PlanMap
+              stops={stops}
+              direction={plan.direction}
+              pois={pois}
+              highlightDays={highlightDays}
+              onHoverDay={handleMapHover}
+            />
+          </div>
+
           {/* Elevation card */}
           <div className="bg-white rounded-[20px] p-5 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
             <div className="flex justify-between items-center mb-3">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-stone flex items-center gap-1.5">
                 ⛰️ Elevation Profile
               </h4>
-              <span className="text-xs text-stone-light">Highest: Cleeve Hill {formatElevationM(330)}</span>
+              <span className="text-xs text-stone-light">Highest: Cleeve Common {formatElevationM(307)}</span>
             </div>
             <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
           </div>
@@ -381,7 +423,7 @@ export default function TripPlanner() {
               const conn = connections[i];
               const [startMile, endMile] = getDayMileRange(stops, i, plan.direction);
               const dayPois = pois.filter(p => {
-                const mile = approximateMileFromLat(p.latitude);
+                const mile = approximateMileFromLat(p.latitude, p.longitude);
                 return mile >= startMile && mile <= endMile;
               });
               const isLastDay = i === stops.length - 1;
@@ -391,6 +433,12 @@ export default function TripPlanner() {
 
               const diffLabel = stop.walkScore >= 7 ? "Tough" : stop.walkScore >= 4 ? "Moderate" : "Easy";
               const diffClass = stop.walkScore >= 7 ? "bg-terracotta/10 text-terracotta" : stop.walkScore >= 4 ? "bg-amber-warm/10 text-brass-dark" : "bg-forest/8 text-forest-light";
+
+              const fc = forecast.forecast[i];
+              const weatherDesc = fc ? describeWmo(fc.weatherCode) : null;
+              const dayDate = plan.startDate
+                ? new Date(new Date(plan.startDate + "T00:00:00Z").getTime() + i * 86400000)
+                : null;
 
               return (
                 <div key={stop.day}
@@ -412,6 +460,11 @@ export default function TripPlanner() {
                         {from} → {stop.village}
                       </h3>
                       <div className="flex items-center gap-3 text-xs text-stone flex-wrap">
+                        {dayDate && (
+                          <span className="font-medium text-forest">
+                            {dayDate.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                          </span>
+                        )}
                         <span>{formatDistance(stop.miles)}</span>
                         <span>{formatElevation(conn?.elevationGain || 0)} ↑</span>
                         <span>{conn?.walkTime || "—"}</span>
@@ -424,6 +477,32 @@ export default function TripPlanner() {
                       <MiniElevation startMile={startMile} endMile={endMile} />
                     </div>
                   </div>
+
+                  {/* Forecast + daylight strip (only when a live forecast is available) */}
+                  {fc && weatherDesc && (
+                    <div className="flex items-center gap-3 px-5 pb-2 pl-[88px] text-xs text-stone flex-wrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-sm">{weatherDesc.icon}</span>
+                        {weatherDesc.label}
+                      </span>
+                      <span className="font-medium text-ink-light">{formatTemp(fc.tempMinC)}–{formatTemp(fc.tempMaxC)}</span>
+                      {fc.precipProbPct > 20 && (
+                        <span className={fc.precipProbPct > 60 ? "text-terracotta font-semibold" : "text-brass-dark"}>
+                          {fc.precipProbPct}% rain
+                        </span>
+                      )}
+                      <span className="inline-flex items-center gap-1">
+                        <span className="material-symbols-outlined text-sm">wb_twilight</span>
+                        {formatLocalTime(fc.sunriseIso)}–{formatLocalTime(fc.sunsetIso)}
+                        <span className="text-stone-light">({fc.daylightHours}h)</span>
+                      </span>
+                      {fc.windMaxKmh > 40 && (
+                        <span className="text-terracotta font-semibold">
+                          {Math.round(fc.windMaxKmh)} km/h wind
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Action tags */}
                   <div className="flex gap-1.5 px-5 pb-4 pl-[88px] flex-wrap">
@@ -448,6 +527,9 @@ export default function TripPlanner() {
               );
             })}
           </div>
+
+          {/* Trip prep: transport, baggage, pack list */}
+          <TripPrep stops={stops} direction={plan.direction} startDate={plan.startDate} month={plan.month} />
 
           {/* Budget accordion */}
           <div className="bg-white rounded-[20px] shadow-[0_1px_3px_rgba(30,63,43,0.06)] overflow-hidden">
@@ -516,7 +598,7 @@ export default function TripPlanner() {
               <h4 className="text-xs font-semibold uppercase tracking-wider text-stone flex items-center gap-1.5">
                 ⛰️ Elevation Profile
               </h4>
-              <span className="text-xs text-stone-light">Highest: Cleeve Hill {formatElevationM(330)}</span>
+              <span className="text-xs text-stone-light">Highest: Cleeve Common {formatElevationM(307)}</span>
             </div>
             <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
           </div>

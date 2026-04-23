@@ -1,6 +1,6 @@
 "use client";
 
-import { type DayStop, type Connection, WEATHER_DATA, getStartVillage } from "@/lib/plan-engine";
+import { type DayStop, type Connection, WEATHER_DATA, getStartVillage, TRAIL_TOTAL_MILES } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
 
 export default function PrintableDayCards({
@@ -90,7 +90,7 @@ export default function PrintableDayCards({
 
             <div className="flex gap-4 text-xs text-gray-600">
               <span>Cumulative: {formatDistance(stop.cumulative)}</span>
-              <span>Remaining: {formatDistance(102 - stop.cumulative)}</span>
+              <span>Remaining: {formatDistance(Math.max(0, TRAIL_TOTAL_MILES - stop.cumulative))}</span>
               <span>Weather: {formatTempRange(weather.tempLow, weather.tempHigh)}</span>
             </div>
 

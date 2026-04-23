@@ -1,7 +1,13 @@
 /**
  * Plan Engine — consolidated data and computation for trip planning.
  * Pure functions, no React dependencies.
+ *
+ * Trail distances, village mile markers, elevation profile and segment ascent/
+ * descent are all sourced from src/data/trail-accurate.json, which is built
+ * from the real OSM Cotswold Way LineString + Open-Meteo elevation samples.
+ * Regenerate with `node scripts/build-trail-data.mjs`.
  */
+import trailData from "@/data/trail-accurate.json";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -9,6 +15,20 @@ export interface Village {
   name: string;
   mile: number;
   lat: number;
+  lng: number;
+  /** Walking distance (km) from the village centre to the nearest trail point. */
+  offTrailKm: number;
+}
+
+export interface TrailSegment {
+  from: string;
+  to: string;
+  miles: number;
+  km: number;
+  ascentM: number;
+  descentM: number;
+  ascentFt: number;
+  descentFt: number;
 }
 
 export interface PlannedAccommodation {
@@ -54,7 +74,10 @@ export interface Connection {
 export interface PlanState {
   direction: "north_to_south" | "south_to_north";
   days: number;
-  month: number;        // 0-11
+  /** Month 0-11. Legacy field, derived from `startDate` when that is set. */
+  month: number;
+  /** ISO yyyy-mm-dd for day 1 of the walk. Optional for backwards compat. */
+  startDate?: string;
   dogFriendly: boolean;
   stops: DayStop[];
 }
@@ -68,53 +91,30 @@ export interface CostBreakdown {
   perNight: number;
 }
 
-// ─── Static Data ────────────────────────────────────────────────────────────
+// ─── Static Data (sourced from src/data/trail-accurate.json) ───────────────
 
-export const VILLAGES: Village[] = [
-  { name: "Chipping Campden", mile: 0,    lat: 52.0536 },
-  { name: "Broadway",         mile: 6.2,  lat: 52.0356 },
-  { name: "Stanton",          mile: 10,   lat: 52.024  },
-  { name: "Winchcombe",       mile: 15.5, lat: 51.9539 },
-  { name: "Cleeve Hill",      mile: 20,   lat: 51.9348 },
-  { name: "Cheltenham",       mile: 26,   lat: 51.8994 },
-  { name: "Birdlip",          mile: 33,   lat: 51.8403 },
-  { name: "Cranham",          mile: 36,   lat: 51.82   },
-  { name: "Painswick",        mile: 40,   lat: 51.7889 },
-  { name: "Stroud",           mile: 46,   lat: 51.7452 },
-  { name: "King's Stanley",   mile: 49,   lat: 51.728  },
-  { name: "Dursley",          mile: 57,   lat: 51.6813 },
-  { name: "North Nibley",     mile: 60,   lat: 51.66   },
-  { name: "Wotton-under-Edge",mile: 63,   lat: 51.6366 },
-  { name: "Old Sodbury",      mile: 75,   lat: 51.5395 },
-  { name: "Tormarton",        mile: 80,   lat: 51.505  },
-  { name: "Cold Ashton",      mile: 88,   lat: 51.43   },
-  { name: "Bath",             mile: 102,  lat: 51.3811 },
-];
+/** Total trail length in miles, measured from the real OSM LineString. */
+export const TRAIL_TOTAL_MILES: number = trailData.trail.totalMiles;
 
-export const TRAIL_SEGMENTS = [
-  { from: "Chipping Campden", to: "Broadway",          miles: 6.2,  elevationFt: 850,  difficulty: "moderate"  as const },
-  { from: "Broadway",         to: "Winchcombe",         miles: 11.4, elevationFt: 1240, difficulty: "strenuous" as const },
-  { from: "Winchcombe",       to: "Cheltenham",         miles: 12.8, elevationFt: 980,  difficulty: "moderate"  as const },
-  { from: "Cheltenham",       to: "Painswick",          miles: 13.5, elevationFt: 1100, difficulty: "strenuous" as const },
-  { from: "Painswick",        to: "Stroud",             miles: 8.6,  elevationFt: 640,  difficulty: "moderate"  as const },
-  { from: "Stroud",           to: "Dursley",            miles: 14.0, elevationFt: 1380, difficulty: "strenuous" as const },
-  { from: "Dursley",          to: "Wotton-under-Edge",  miles: 7.2,  elevationFt: 580,  difficulty: "moderate"  as const },
-  { from: "Wotton-under-Edge",to: "Old Sodbury",        miles: 15.5, elevationFt: 920,  difficulty: "strenuous" as const },
-  { from: "Old Sodbury",      to: "Bath",               miles: 20.7, elevationFt: 760,  difficulty: "moderate"  as const },
-];
+/** Highest point on the trail (trail-relative mile + elevation in metres). */
+export const TRAIL_HIGHEST_POINT = trailData.trail.highestPoint;
 
-// Elevation profile data (mile, elevation in metres)
-export const ELEVATION_POINTS: [number, number][] = [
-  [0, 170], [2, 240], [4, 285], [6, 65], [8, 120], [10, 185],
-  [12, 95], [14, 78], [16, 62], [18, 52], [20, 180], [22.8, 330],
-  [24, 260], [26, 100], [27, 80], [29, 150], [31, 220], [33, 265],
-  [35, 200], [37, 175], [39, 140], [40.5, 188], [42, 120], [44, 88],
-  [46, 68], [48, 140], [50, 175], [52, 145], [54, 80], [56, 52],
-  [58, 28], [60, 85], [62, 160], [64, 178], [66, 68], [68, 96],
-  [70, 152], [72, 185], [74, 124], [76, 122], [78, 160], [80, 195],
-  [82, 212], [84, 190], [86, 220], [88, 165], [90, 130], [92, 175],
-  [94, 210], [96, 220], [98, 165], [100, 90], [102, 40],
-];
+/** Total ascent / descent in metres across the whole trail (from SRTM samples). */
+export const TRAIL_TOTAL_ASCENT_M = trailData.trail.totalAscentM;
+export const TRAIL_TOTAL_DESCENT_M = trailData.trail.totalDescentM;
+
+export const VILLAGES: Village[] = trailData.villages.map((v) => ({
+  name: v.name,
+  mile: v.mile,
+  lat: v.anchorLat,
+  lng: v.anchorLng,
+  offTrailKm: v.offTrailKm,
+}));
+
+export const TRAIL_SEGMENTS: TrailSegment[] = trailData.segments;
+
+/** Real elevation profile: [mile, metres] pairs sampled every ~0.25 mi. */
+export const ELEVATION_POINTS: [number, number][] = trailData.elevationProfile as [number, number][];
 
 export const WEATHER_DATA = [
   { month: "Jan", tempLow: 1, tempHigh: 7,  rainfall: "wet"      as const },
@@ -371,51 +371,132 @@ export function computeWalkScore(miles: number, elevationFt: number, difficulty:
   return score;
 }
 
-export function estimateWalkingTime(miles: number, elevationFt: number): string {
-  // Naismith's rule: 3mph + 1 hour per 2000ft ascent
-  const baseHours = miles / 3;
-  const climbHours = elevationFt / 2000;
-  const total = baseHours + climbHours;
-  const h = Math.floor(total);
-  const m = Math.round((total - h) * 60);
+const KM_PER_MILE = 1.609344;
+const FT_PER_M = 3.28084;
+const M_PER_FT = 0.3048;
+
+/**
+ * Walking time using Tobler's hiking function. Unlike Naismith, this accounts
+ * for descent too — steep downhills slow you down, gentle downhills speed you
+ * up vs flat. We integrate over the real elevation profile for the mile range.
+ *
+ *   v(slope) = 6 · exp(-3.5 · |slope + 0.05|) km/h
+ *
+ * Falls back to Naismith-equivalent if the profile is empty for that range.
+ */
+export function estimateWalkingTime(miles: number, ascentM: number, descentM: number = 0): string {
+  // Distribute ascent/descent proportionally across the distance for a coarse
+  // Tobler estimate when we don't have a profile slice.
+  const km = miles * KM_PER_MILE;
+  if (km <= 0) return "0h 00m";
+  const ascentKm = ascentM / 1000;
+  const descentKm = descentM / 1000;
+  // Approximate a two-segment profile: half ascent then half descent.
+  const up = km / 2;
+  const down = km / 2;
+  const slopeUp = up > 0 ? ascentKm / up : 0;
+  const slopeDown = down > 0 ? -descentKm / down : 0;
+  const vUp = 6 * Math.exp(-3.5 * Math.abs(slopeUp + 0.05));
+  const vDown = 6 * Math.exp(-3.5 * Math.abs(slopeDown + 0.05));
+  const hours = up / vUp + down / vDown;
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
   return `${h}h ${m.toString().padStart(2, "0")}m`;
 }
 
-export function getDifficulty(miles: number, elevationFt: number): "easy" | "moderate" | "strenuous" {
-  if (miles > 16 || elevationFt > 2000) return "strenuous";
-  if (miles > 10 || elevationFt > 1000) return "moderate";
+/** More accurate walking time integrated over the real elevation profile. */
+export function walkingTimeBetween(startMile: number, endMile: number): string {
+  const [lo, hi] = startMile < endMile ? [startMile, endMile] : [endMile, startMile];
+  let hours = 0;
+  let prev: [number, number] | null = null;
+  for (const pt of ELEVATION_POINTS) {
+    if (pt[0] < lo || pt[0] > hi) continue;
+    if (prev) {
+      const dxKm = (pt[0] - prev[0]) * KM_PER_MILE;
+      if (dxKm > 0) {
+        const dzKm = (pt[1] - prev[1]) / 1000;
+        const slope = dzKm / dxKm;
+        const v = 6 * Math.exp(-3.5 * Math.abs(slope + 0.05));
+        hours += dxKm / v;
+      }
+    }
+    prev = pt;
+  }
+  if (hours === 0) {
+    // Fallback: flat Tobler speed (~5 km/h)
+    hours = (hi - lo) * KM_PER_MILE / 5;
+  }
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return `${h}h ${m.toString().padStart(2, "0")}m`;
+}
+
+export function getDifficulty(miles: number, ascentFt: number): "easy" | "moderate" | "strenuous" {
+  if (miles > 16 || ascentFt > 2000) return "strenuous";
+  if (miles > 10 || ascentFt > 1000) return "moderate";
   return "easy";
 }
 
-/** Find the elevation gain for a segment between two villages */
-export function findSegmentElevation(from: string, to: string): number {
-  // Try exact match in TRAIL_SEGMENTS
-  const seg = TRAIL_SEGMENTS.find(s => s.from === from && s.to === to);
-  if (seg) return seg.elevationFt;
+/** Ascent/descent for any mile range, computed from the real profile. */
+export function ascentDescentBetween(startMile: number, endMile: number): { ascentM: number; descentM: number; ascentFt: number; descentFt: number } {
+  const [lo, hi] = startMile < endMile ? [startMile, endMile] : [endMile, startMile];
+  let ascentM = 0;
+  let descentM = 0;
+  let prev: [number, number] | null = null;
+  for (const pt of ELEVATION_POINTS) {
+    if (pt[0] < lo || pt[0] > hi) continue;
+    if (prev) {
+      const delta = pt[1] - prev[1];
+      if (delta > 0) ascentM += delta;
+      else descentM -= delta;
+    }
+    prev = pt;
+  }
+  return {
+    ascentM: Math.round(ascentM),
+    descentM: Math.round(descentM),
+    ascentFt: Math.round(ascentM * FT_PER_M),
+    descentFt: Math.round(descentM * FT_PER_M),
+  };
+}
 
-  // Estimate from mile markers and elevation data
+/**
+ * Elevation gain in feet for a village-to-village segment. Prefers the
+ * pre-computed value from trail-accurate.json; falls back to integrating the
+ * live profile between mile markers (useful when the stop pair isn't a known
+ * consecutive-villages segment).
+ */
+export function findSegmentElevation(from: string, to: string): number {
+  const seg = TRAIL_SEGMENTS.find(s => s.from === from && s.to === to) || TRAIL_SEGMENTS.find(s => s.from === to && s.to === from);
+  if (seg) return seg.ascentFt;
+
   const fromVillage = VILLAGES.find(v => v.name === from);
   const toVillage = VILLAGES.find(v => v.name === to);
-  if (!fromVillage || !toVillage) return 800; // default
+  if (!fromVillage || !toVillage) return 800;
 
-  const startMile = Math.min(fromVillage.mile, toVillage.mile);
-  const endMile = Math.max(fromVillage.mile, toVillage.mile);
+  return ascentDescentBetween(fromVillage.mile, toVillage.mile).ascentFt;
+}
 
-  // Sum positive elevation changes along the segment
-  let gain = 0;
-  let prevElev = 0;
-  for (const [m, e] of ELEVATION_POINTS) {
-    if (m >= startMile && m <= endMile) {
-      if (prevElev > 0 && e > prevElev) gain += (e - prevElev);
-      prevElev = e;
-    }
-  }
-  // Convert meters to feet and scale
-  return Math.round(gain * 3.281);
+/** Return both ascent and descent in feet for a village segment. */
+export function findSegmentProfile(from: string, to: string): { ascentFt: number; descentFt: number; ascentM: number; descentM: number } {
+  const seg = TRAIL_SEGMENTS.find(s => s.from === from && s.to === to);
+  if (seg) return { ascentFt: seg.ascentFt, descentFt: seg.descentFt, ascentM: seg.ascentM, descentM: seg.descentM };
+  // Reverse direction: swap ascent/descent
+  const rev = TRAIL_SEGMENTS.find(s => s.from === to && s.to === from);
+  if (rev) return { ascentFt: rev.descentFt, descentFt: rev.ascentFt, ascentM: rev.descentM, descentM: rev.ascentM };
+
+  const fromVillage = VILLAGES.find(v => v.name === from);
+  const toVillage = VILLAGES.find(v => v.name === to);
+  if (!fromVillage || !toVillage) return { ascentFt: 800, descentFt: 800, ascentM: Math.round(800 * M_PER_FT), descentM: Math.round(800 * M_PER_FT) };
+
+  const ad = ascentDescentBetween(fromVillage.mile, toVillage.mile);
+  return fromVillage.mile < toVillage.mile
+    ? ad
+    : { ascentM: ad.descentM, descentM: ad.ascentM, ascentFt: ad.descentFt, descentFt: ad.ascentFt };
 }
 
 export function autoStops(days: number, direction: "north_to_south" | "south_to_north"): DayStop[] {
-  const totalMiles = 102.0;
+  const totalMiles = TRAIL_TOTAL_MILES;
   const targetPerDay = totalMiles / days;
   const stops: DayStop[] = [];
   const used = new Set<string>();
@@ -436,7 +517,7 @@ export function autoStops(days: number, direction: "north_to_south" | "south_to_
 
     for (const v of orderedVillages) {
       if (used.has(v.name) || v.name === endVillage.name) continue;
-      const progressMile = direction === "north_to_south" ? v.mile : 102 - v.mile;
+      const progressMile = direction === "north_to_south" ? v.mile : totalMiles - v.mile;
       const dist = Math.abs(progressMile - targetMile);
       if (dist < bestDist && progressMile > lastMile && progressMile < totalMiles) {
         bestDist = dist;
@@ -444,7 +525,7 @@ export function autoStops(days: number, direction: "north_to_south" | "south_to_
       }
     }
 
-    const progressMile = direction === "north_to_south" ? best.mile : 102 - best.mile;
+    const progressMile = direction === "north_to_south" ? best.mile : totalMiles - best.mile;
     const dayMiles = Math.round((progressMile - lastMile) * 10) / 10;
     const difficulty = DIFFICULTY_MAP[best.name] || "moderate";
     const elevationFt = findSegmentElevation(
@@ -475,7 +556,7 @@ export function autoStops(days: number, direction: "north_to_south" | "south_to_
     day: days,
     village: endVillage.name,
     miles: finalMiles,
-    cumulative: totalMiles,
+    cumulative: Math.round(totalMiles * 10) / 10,
     difficulty: finalDifficulty,
     walkScore: computeWalkScore(finalMiles, finalElevation, finalDifficulty),
   });
@@ -491,18 +572,18 @@ export function computeConnections(stops: DayStop[], direction: "north_to_south"
     const from = i === 0 ? startVillage : stops[i - 1].village;
     const to = stops[i].village;
     const miles = stops[i].miles;
-    const elevationFt = findSegmentElevation(from, to);
-    const difficulty = getDifficulty(miles, elevationFt);
+    const profile = findSegmentProfile(from, to);
+    const difficulty = getDifficulty(miles, profile.ascentFt);
 
     let terrain = "Gentle Walk";
-    if (elevationFt > 1200) terrain = "Steep Escarpment";
-    else if (elevationFt > 800) terrain = "Moderate Ascent";
+    if (profile.ascentFt > 1200) terrain = "Steep Escarpment";
+    else if (profile.ascentFt > 800) terrain = "Moderate Ascent";
     else if (miles > 15) terrain = "Long Valley Route";
 
     connections.push({
       from, to, distance: miles,
-      elevationGain: elevationFt,
-      walkTime: estimateWalkingTime(miles, elevationFt),
+      elevationGain: profile.ascentFt,
+      walkTime: estimateWalkingTime(miles, profile.ascentM, profile.descentM),
       difficulty, terrain,
     });
   }
@@ -523,9 +604,46 @@ export function estimateCosts(nights: number): CostBreakdown {
   };
 }
 
-/** Approximate mile marker from latitude using village anchors */
-export function approximateMileFromLat(lat: number): number {
-  // Villages are ordered N→S (decreasing lat, increasing mile)
+/** Compact [lat, lng, mile] trail polyline, sampled from the real OSM LineString. */
+export const TRAIL_POLYLINE: ReadonlyArray<readonly [number, number, number]> =
+  (trailData.polyline as unknown as [number, number, number][]);
+
+// Equirectangular approximation — much cheaper than haversine and accurate for
+// the short distances we use it for (snapping a point to the nearest trail
+// sample within ~10 km).
+function approxDistKm2(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const latMid = ((lat1 + lat2) / 2) * Math.PI / 180;
+  const dLat = (lat2 - lat1) * 111.32;
+  const dLng = (lng2 - lng1) * 111.32 * Math.cos(latMid);
+  return dLat * dLat + dLng * dLng; // squared km, fine for comparisons
+}
+
+/**
+ * Snap a lat/lng to the Cotswold Way polyline and return the trail mile of the
+ * nearest sampled point, along with the off-trail distance in metres.
+ */
+export function snapLatLngToTrail(lat: number, lng: number): { mile: number; offTrailM: number } {
+  let bestIdx = 0;
+  let bestD2 = Infinity;
+  for (let i = 0; i < TRAIL_POLYLINE.length; i++) {
+    const [tLat, tLng] = TRAIL_POLYLINE[i];
+    const d2 = approxDistKm2(lat, lng, tLat, tLng);
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      bestIdx = i;
+    }
+  }
+  const [, , mile] = TRAIL_POLYLINE[bestIdx];
+  return { mile, offTrailM: Math.round(Math.sqrt(bestD2) * 1000) };
+}
+
+/**
+ * Legacy helper kept for compat. Snaps by latitude only — unreliable where the
+ * trail bends east-west. Prefer `snapLatLngToTrail` when longitude is known.
+ * @deprecated
+ */
+export function approximateMileFromLat(lat: number, lng?: number): number {
+  if (lng !== undefined) return snapLatLngToTrail(lat, lng).mile;
   for (let i = 0; i < VILLAGES.length - 1; i++) {
     const a = VILLAGES[i];
     const b = VILLAGES[i + 1];
@@ -534,9 +652,8 @@ export function approximateMileFromLat(lat: number): number {
       return a.mile + t * (b.mile - a.mile);
     }
   }
-  // Outside range
   if (lat > VILLAGES[0].lat) return 0;
-  return 102;
+  return TRAIL_TOTAL_MILES;
 }
 
 /** Get the start village for a given day */
@@ -553,7 +670,7 @@ export function getDayMileRange(stops: DayStop[], dayIndex: number, direction: "
   const startV = VILLAGES.find(v => v.name === startVillage);
   const endV = VILLAGES.find(v => v.name === endVillage);
 
-  if (!startV || !endV) return [0, 102];
+  if (!startV || !endV) return [0, TRAIL_TOTAL_MILES];
 
   const startMile = Math.min(startV.mile, endV.mile);
   const endMile = Math.max(startV.mile, endV.mile);
@@ -563,7 +680,7 @@ export function getDayMileRange(stops: DayStop[], dayIndex: number, direction: "
 // ─── Customise helpers ──────────────────────────────────────────────────────
 
 function progressMile(village: Village, direction: "north_to_south" | "south_to_north"): number {
-  return direction === "north_to_south" ? village.mile : 102 - village.mile;
+  return direction === "north_to_south" ? village.mile : TRAIL_TOTAL_MILES - village.mile;
 }
 
 /** Get available villages between two stops (for add-stop dropdown) */
