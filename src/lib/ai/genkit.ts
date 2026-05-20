@@ -1,5 +1,5 @@
 import { genkit } from "genkit";
-import { vertexAI, gemini25Flash } from "@genkit-ai/vertexai";
+import { vertexAI, gemini } from "@genkit-ai/vertexai";
 
 // Genkit instance with Vertex AI plugin.
 // Authentication: Application Default Credentials.
@@ -15,5 +15,5 @@ export const ai = genkit({
       projectId: process.env.GOOGLE_CLOUD_PROJECT || "cw-website-48e46",
     }),
   ],
-  model: gemini25Flash,
+  model: gemini("gemini-2.5-flash"),
 });
