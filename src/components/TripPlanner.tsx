@@ -7,6 +7,7 @@ import {
   autoStops, computeConnections, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
   encodePlanToURL, planFromWishlist, TRAIL_TOTAL_MILES,
+  TRAIL_TOTAL_ASCENT_M, TRAIL_TOTAL_DESCENT_M,
   type DayStop,
 } from "@/lib/plan-engine";
 import { useWishlistStorage } from "@/hooks/useWishlistStorage";
@@ -23,6 +24,7 @@ import TripPrep from "@/components/plan/TripPrep";
 import DayAmenities from "@/components/plan/DayAmenities";
 import AccommodationPicker from "@/components/plan/AccommodationPicker";
 import PlansLibrary from "@/components/plan/PlansLibrary";
+import PlanWarnings from "@/components/plan/PlanWarnings";
 import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
@@ -80,9 +82,20 @@ export default function TripPlanner() {
   // to monthly climatology (WEATHER_DATA) when outside the window.
   const forecast = useForecast(plan.startDate, stops.length || plan.days);
 
+  // Day that the map should fly to. `focusTick` increments on every click so
+  // clicking the same day twice re-fires the fitBounds effect.
+  const [focusedDay, setFocusedDay] = useState<number | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
+
   // Stable callback so PlanMap's effect doesn't re-run every parent render.
   const handleMapHover = useCallback((day: number | null) => {
     setHighlightDays(day ? [day] : []);
+  }, []);
+
+  const handleDayClick = useCallback((day: number) => {
+    setFocusedDay(day);
+    setFocusTick((t) => t + 1);
+    setHighlightDays([day]);
   }, []);
 
   const buildRoute = useCallback(() => {
@@ -368,6 +381,9 @@ export default function TripPlanner() {
       {step === 2 && stops.length > 0 && (() => {
         const totalNights = stops.filter(s => !s.restDay).length - 1;
         const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
+        // Total climb of the plan = sum of each leg's ascent. For full
+        // end-to-end plans this equals the trail-wide total (~3,845 m).
+        const totalAscentM = connections.reduce((sum, c) => sum + (c?.elevationGain ?? 0) / 3.28084, 0);
         return (
         <div className="animate-step-in space-y-8 pt-4">
           {/* Route header */}
@@ -386,6 +402,12 @@ export default function TripPlanner() {
               <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium bg-forest/6 text-forest">
                 🥾 {formatDistance(avgMiles)}/day
               </span>
+              <span
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium bg-secondary/8 text-secondary"
+                title={`Total climb across the plan (whole trail = ${Math.round(TRAIL_TOTAL_ASCENT_M)} m up, ${Math.round(TRAIL_TOTAL_DESCENT_M)} m down)`}
+              >
+                ⛰️ {formatElevationM(Math.round(totalAscentM))} climb
+              </span>
               <span className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium ${
                 bookedNights === totalNights && totalNights > 0 ? "bg-forest/6 text-forest" : "bg-terracotta/8 text-terracotta"
               }`}>
@@ -397,6 +419,9 @@ export default function TripPlanner() {
             </div>
           </div>
 
+          {/* Plan warnings — long days, back-to-backs, missing bookings */}
+          <PlanWarnings stops={stops} onHighlightDays={setHighlightDays} />
+
           {/* Interactive route map */}
           <div className="bg-white rounded-[20px] p-2 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
             <PlanMap
@@ -404,6 +429,8 @@ export default function TripPlanner() {
               direction={plan.direction}
               pois={pois}
               highlightDays={highlightDays}
+              focusDay={focusedDay}
+              focusTick={focusTick}
               onHoverDay={handleMapHover}
             />
           </div>
@@ -443,14 +470,37 @@ export default function TripPlanner() {
                 ? new Date(new Date(plan.startDate + "T00:00:00Z").getTime() + i * 86400000)
                 : null;
 
+              // "Leave by" time = sunset − walking hours − 1 hr buffer (breaks
+              // + arrival contingency). If the buffer puts the start before
+              // sunrise, surface as a "tight daylight" warning.
+              const walkHours = conn?.walkTime?.match(/(\d+)h\s*(\d+)?/);
+              const walkMinutes = walkHours ? parseInt(walkHours[1]) * 60 + (parseInt(walkHours[2] ?? "0")) : 0;
+              const leaveBy = (() => {
+                if (!fc || !walkMinutes) return null;
+                const sunset = new Date(fc.sunsetIso);
+                const sunrise = new Date(fc.sunriseIso);
+                const buffer = 60; // minutes
+                const latest = new Date(sunset.getTime() - (walkMinutes + buffer) * 60000);
+                const tight = latest < sunrise;
+                return {
+                  latest,
+                  tight,
+                  label: `${latest.getHours().toString().padStart(2, "0")}:${latest.getMinutes().toString().padStart(2, "0")}`,
+                };
+              })();
+
               return (
                 <div key={stop.day}
                   className="bg-white rounded-[20px] border-[1.5px] border-transparent shadow-[0_1px_3px_rgba(30,63,43,0.06)] transition-all duration-300 hover:shadow-[0_4px_16px_rgba(30,63,43,0.08)] hover:-translate-y-px hover:border-forest/8 overflow-hidden"
                   onMouseEnter={() => setHighlightDays([stop.day])}
                   onMouseLeave={() => setHighlightDays([])}
                 >
-                  {/* Main row */}
-                  <div className="grid grid-cols-[52px_1fr_auto] items-center gap-4 px-5 py-[18px]">
+                  {/* Main row — click anywhere here to focus the map on this day */}
+                  <div
+                    className="grid grid-cols-[52px_1fr_auto] items-center gap-4 px-5 py-[18px] cursor-pointer"
+                    onClick={() => handleDayClick(stop.day)}
+                    title="Show this day on the map"
+                  >
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[15px] font-medium transition-all ${
                       stop.accommodation
                         ? "bg-forest text-white"
@@ -502,6 +552,16 @@ export default function TripPlanner() {
                         {formatLocalTime(fc.sunriseIso)}–{formatLocalTime(fc.sunsetIso)}
                         <span className="text-stone-light">({fc.daylightHours}h)</span>
                       </span>
+                      {leaveBy && (
+                        <span
+                          className={leaveBy.tight ? "inline-flex items-center gap-1 text-terracotta font-semibold" : "inline-flex items-center gap-1"}
+                          title={leaveBy.tight ? "Walking time + 1h buffer doesn't fit in daylight — consider splitting this day or starting at first light" : "Latest sensible start to reach the next stop ~1h before sunset"}
+                        >
+                          <span className="material-symbols-outlined text-sm">schedule</span>
+                          leave by {leaveBy.label}
+                          {leaveBy.tight && <span className="ml-0.5">⚠</span>}
+                        </span>
+                      )}
                       {fc.windMaxKmh > 40 && (
                         <span className="text-terracotta font-semibold">
                           {Math.round(fc.windMaxKmh)} km/h wind

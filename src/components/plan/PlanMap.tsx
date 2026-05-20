@@ -29,19 +29,25 @@ const LAYER_DEFS: { key: LayerKey; label: string; icon: string; types: string[] 
  * Interactive route map for the trip planner. Shows the real OSM trail, each
  * day's segment in a distinct hue, numbered day-end markers, and filterable
  * POI overlays. Hovering a day card in the parent highlights that day's leg
- * on the map via the `highlightDays` prop.
+ * on the map via the `highlightDays` prop; when `focusDay` is set, the map
+ * flies to that day's segment bounds.
  */
 export default function PlanMap({
   stops,
   direction,
   pois,
   highlightDays,
+  focusDay,
+  focusTick,
   onHoverDay,
 }: {
   stops: DayStop[];
   direction: "north_to_south" | "south_to_north";
   pois: POI[];
   highlightDays?: number[];
+  focusDay?: number | null;
+  /** Increments on each click so re-clicking the same day re-zooms. */
+  focusTick?: number;
   onHoverDay?: (day: number | null) => void;
 }) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -200,6 +206,34 @@ export default function PlanMap({
       dayMarkers.current.push(marker);
     }
   }, [loaded, stops, direction, highlightDays, onHoverDay]);
+
+  // Fly the camera to the focused day's segment bounds.
+  useEffect(() => {
+    if (!loaded || !map.current || !focusDay) return;
+    const idx = stops.findIndex((s) => s.day === focusDay);
+    if (idx < 0) return;
+    const stop = stops[idx];
+    if (stop.restDay) return;
+    const fromVillage = getStartVillage(stops, idx, direction);
+    const fromV = VILLAGES.find((v) => v.name === fromVillage);
+    const toV = VILLAGES.find((v) => v.name === stop.village);
+    if (!fromV || !toV) return;
+    const [lo, hi] = fromV.mile < toV.mile ? [fromV.mile, toV.mile] : [toV.mile, fromV.mile];
+    const seg = TRAIL_POLYLINE.filter(([, , mile]) => mile >= lo && mile <= hi);
+    if (seg.length < 2) return;
+
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    for (const [lat, lng] of seg) {
+      if (lng < minLng) minLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lng > maxLng) maxLng = lng;
+      if (lat > maxLat) maxLat = lat;
+    }
+    map.current.fitBounds(
+      [[minLng, minLat], [maxLng, maxLat]],
+      { padding: 60, duration: 800, maxZoom: 13 }
+    );
+  }, [loaded, focusDay, focusTick, stops, direction]);
 
   // Render POI markers according to active layers.
   useEffect(() => {
