@@ -1,0 +1,50 @@
+# Firebase App Hosting configuration
+# https://firebase.google.com/docs/app-hosting/configure
+
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  # Public env vars — safe to inline; needed at build time so NEXT_PUBLIC_* gets baked in.
+  - variable: NEXT_PUBLIC_SUPABASE_URL
+    value: https://japnxbkdcbqzospadsyt.supabase.co
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    secret: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_MAPBOX_TOKEN
+    secret: NEXT_PUBLIC_MAPBOX_TOKEN
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Server-only secrets — never exposed to the browser.
+  - variable: SUPABASE_SERVICE_ROLE_KEY
+    secret: SUPABASE_SERVICE_ROLE_KEY
+    availability:
+      - RUNTIME
+
+  - variable: BOOKING_API_BASE_URL
+    value: https://demandapi.booking.com/3.1
+    availability:
+      - RUNTIME
+
+  - variable: BOOKING_API_TOKEN
+    secret: BOOKING_API_TOKEN
+    availability:
+      - RUNTIME
+
+  - variable: BOOKING_AFFILIATE_ID
+    secret: BOOKING_AFFILIATE_ID
+    availability:
+      - RUNTIME
