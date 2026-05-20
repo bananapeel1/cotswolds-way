@@ -297,7 +297,7 @@ export default async function Home() {
           <h2 className="font-headline text-4xl text-primary font-bold mb-12">
             Plan with Confidence
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-12 items-center opacity-60">
+          <div className="hidden grid-cols-2 md:grid-cols-4 gap-12 items-center opacity-60">
             <div className="flex flex-col items-center gap-2">
               <span className="material-symbols-outlined text-4xl">
                 landscape
