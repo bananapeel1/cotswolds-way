@@ -34,17 +34,6 @@ env:
     availability:
       - RUNTIME
 
-  - variable: BOOKING_API_BASE_URL
-    value: https://demandapi.booking.com/3.1
-    availability:
-      - RUNTIME
-
-  - variable: BOOKING_API_TOKEN
-    secret: BOOKING_API_TOKEN
-    availability:
-      - RUNTIME
-
-  - variable: BOOKING_AFFILIATE_ID
-    secret: BOOKING_AFFILIATE_ID
-    availability:
-      - RUNTIME
+  # Booking.com integration disabled until credentials are issued.
+  # When ready, add BOOKING_API_TOKEN and BOOKING_AFFILIATE_ID as
+  # secrets and BOOKING_API_BASE_URL as a value here.
