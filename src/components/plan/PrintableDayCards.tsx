@@ -8,14 +8,23 @@ export default function PrintableDayCards({
   connections,
   direction,
   month,
+  startDate,
 }: {
   stops: DayStop[];
   connections: Connection[];
   direction: "north_to_south" | "south_to_north";
   month: number;
+  /** ISO yyyy-mm-dd of Day 1, if set. Each day's date is derived by offset. */
+  startDate?: string;
 }) {
   const weather = WEATHER_DATA[month];
   const { formatDistance, formatElevation, formatTempRange } = useUnits();
+  const startMs = startDate ? new Date(startDate + "T00:00:00Z").getTime() : null;
+  const formatDate = (offset: number): string => {
+    if (startMs === null) return "";
+    const d = new Date(startMs + offset * 86_400_000);
+    return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  };
 
   return (
     <div className="hidden print:block">
@@ -24,7 +33,8 @@ export default function PrintableDayCards({
       </h1>
       <p className="text-sm text-secondary mb-6 print:text-gray-600">
         {direction === "north_to_south" ? "Chipping Campden → Bath" : "Bath → Chipping Campden"}
-        {" · "}{weather.month} · {formatTempRange(weather.tempLow, weather.tempHigh)}
+        {startDate ? ` · starts ${formatDate(0)}` : ` · ${weather.month}`}
+        {" · "}{formatTempRange(weather.tempLow, weather.tempHigh)}
       </p>
 
       {stops.map((stop, i) => {
@@ -77,6 +87,9 @@ export default function PrintableDayCards({
                 </span>
                 <div>
                   <h2 className="text-lg font-bold">{from} → {stop.village}</h2>
+                  {startMs !== null && (
+                    <p className="text-xs text-gray-700 font-medium">{formatDate(i)}</p>
+                  )}
                   <p className="text-sm text-gray-600">
                     {formatDistance(stop.miles)} · {formatElevation(conn?.elevationGain || 0)} ascent · {conn?.walkTime || "—"}
                   </p>
@@ -87,6 +100,13 @@ export default function PrintableDayCards({
                 <p className="text-xs text-gray-500 capitalize">{stop.difficulty}</p>
               </div>
             </div>
+
+            {stop.accommodation && (
+              <p className="text-sm text-gray-700 border-t border-gray-200 pt-2 mb-2">
+                <strong>Tonight:</strong> {stop.accommodation.name}
+                {stop.accommodation.village !== stop.village ? ` (in ${stop.accommodation.village})` : ""}
+              </p>
+            )}
 
             <div className="flex gap-4 text-xs text-gray-600">
               <span>Cumulative: {formatDistance(stop.cumulative)}</span>

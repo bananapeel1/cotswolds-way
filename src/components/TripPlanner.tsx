@@ -688,7 +688,7 @@ export default function TripPlanner() {
       )}
 
       {/* Printable day cards (hidden on screen) */}
-      <PrintableDayCards stops={stops} connections={connections} direction={plan.direction} month={plan.month} />
+      <PrintableDayCards stops={stops} connections={connections} direction={plan.direction} month={plan.month} startDate={plan.startDate} />
     </div>
   );
 }

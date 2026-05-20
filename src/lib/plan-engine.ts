@@ -304,6 +304,8 @@ export function encodePlanToURL(plan: PlanState): URLSearchParams {
   params.set("dir", plan.direction === "north_to_south" ? "ns" : "sn");
   params.set("days", plan.days.toString());
   params.set("month", plan.month.toString());
+  if (plan.startDate) params.set("start", plan.startDate);
+  if (plan.dogFriendly) params.set("dog", "1");
   params.set("stops", plan.stops.map(s => s.village).join(","));
 
   // Encode accommodation: day:slug pairs
@@ -321,11 +323,73 @@ export function encodePlanToURL(plan: PlanState): URLSearchParams {
   return params;
 }
 
+/**
+ * Reconstruct a full PlanState from URL params. Returns null if the URL
+ * doesn't contain a parseable plan. Accommodation slugs are recorded but the
+ * caller is responsible for resolving them to display names/images.
+ *
+ *   const plan = planFromURL(params, (slug) => properties.find(p => p.slug === slug))
+ */
+export function planFromURL(
+  params: URLSearchParams,
+  resolveAccommodation?: (slug: string) => { name: string; village: string; propertyType: string; image?: string } | undefined
+): PlanState | null {
+  const decoded = decodePlanFromURL(params);
+  if (!decoded) return null;
+
+  const villageNames = decoded.villages;
+  const startVillage = decoded.direction === "north_to_south" ? "Chipping Campden" : "Bath";
+  const stops: DayStop[] = [];
+  let cumulative = 0;
+  let prev = startVillage;
+
+  for (let i = 0; i < villageNames.length; i++) {
+    const name = villageNames[i];
+    const v = VILLAGES.find((x) => x.name === name);
+    const pv = VILLAGES.find((x) => x.name === prev);
+    if (!v || !pv) continue;
+    const segMiles = Math.abs(v.mile - pv.mile);
+    cumulative += segMiles;
+    const elevationFt = findSegmentElevation(prev, name);
+    const difficulty: "easy" | "moderate" | "strenuous" = getDifficulty(segMiles, elevationFt);
+    const stop: DayStop = {
+      day: i + 1,
+      village: name,
+      miles: Math.round(segMiles * 10) / 10,
+      cumulative: Math.round(cumulative * 10) / 10,
+      difficulty,
+      walkScore: computeWalkScore(segMiles, elevationFt, difficulty),
+    };
+
+    const accSlug = decoded.accMap.get(stop.day);
+    if (accSlug) {
+      const resolved = resolveAccommodation?.(accSlug);
+      stop.accommodation = resolved
+        ? { slug: accSlug, ...resolved }
+        : { slug: accSlug, name: accSlug, village: name, propertyType: "unknown" };
+    }
+
+    stops.push(stop);
+    prev = name;
+  }
+
+  return {
+    direction: decoded.direction,
+    days: decoded.days,
+    month: decoded.month,
+    startDate: decoded.startDate,
+    dogFriendly: decoded.dogFriendly,
+    stops,
+  };
+}
+
 /** Decode URL params back to partial plan data (slugs/IDs need resolution) */
 export function decodePlanFromURL(params: URLSearchParams): {
   direction: "north_to_south" | "south_to_north";
   days: number;
   month: number;
+  startDate?: string;
+  dogFriendly: boolean;
   villages: string[];
   accMap: Map<number, string>;    // day → slug
   poisMap: Map<number, number[]>; // day → POI IDs
@@ -353,10 +417,16 @@ export function decodePlanFromURL(params: URLSearchParams): {
     });
   }
 
+  const start = params.get("start");
+  // Reject anything that isn't an ISO yyyy-mm-dd to avoid garbage propagating.
+  const startDate = start && /^\d{4}-\d{2}-\d{2}$/.test(start) ? start : undefined;
+
   return {
     direction: dir === "sn" ? "south_to_north" : "north_to_south",
     days: parseInt(days),
     month: parseInt(params.get("month") || "4"),
+    startDate,
+    dogFriendly: params.get("dog") === "1",
     villages: stops.split(","),
     accMap,
     poisMap,

@@ -6,9 +6,20 @@ import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
   computeConnections, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
-  encodePlanToURL, TRAIL_TOTAL_MILES,
+  encodePlanToURL, planFromURL, TRAIL_TOTAL_MILES,
+  type PlanState,
 } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
+import propertiesRaw from "@/data/properties.json";
+
+interface PropertyLite {
+  slug: string;
+  name: string;
+  village: string;
+  property_type: string;
+  image_url: string | null;
+}
+const PROPERTIES = propertiesRaw as unknown as PropertyLite[];
 
 interface POI {
   id: number; type: string; name: string;
@@ -29,9 +40,26 @@ const POI_ICONS: Record<string, string> = {
 };
 
 export default function MyTripSummary() {
-  const { plan, hydrated } = usePlanStorage();
+  const { plan: localPlan, hydrated, updatePlan } = usePlanStorage();
   const [pois, setPois] = useState<POI[]>([]);
   const [shareToast, setShareToast] = useState(false);
+  const [sharedPlan, setSharedPlan] = useState<PlanState | null>(null);
+  const [importToast, setImportToast] = useState(false);
+
+  // Look for a URL-encoded plan on mount — when present, render that instead
+  // of the local one so shared links actually work for the recipient.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("stops")) return;
+    const fromUrl = planFromURL(params, (slug) => {
+      const p = PROPERTIES.find((x) => x.slug === slug);
+      return p
+        ? { name: p.name, village: p.village, propertyType: p.property_type, image: p.image_url ?? undefined }
+        : undefined;
+    });
+    if (fromUrl) setSharedPlan(fromUrl);
+  }, []);
 
   useEffect(() => {
     fetch("/api/pois")
@@ -40,9 +68,18 @@ export default function MyTripSummary() {
       .catch(() => {});
   }, []);
 
+  // Shared URL plan always wins over the local one.
+  const plan = sharedPlan ?? localPlan;
   const stops = plan.stops;
   const connections = useMemo(() => stops.length > 0 ? computeConnections(stops, plan.direction) : [], [stops, plan.direction]);
   const weather = WEATHER_DATA[plan.month];
+
+  function importToLocalPlanner() {
+    if (!sharedPlan) return;
+    updatePlan(sharedPlan);
+    setImportToast(true);
+    setTimeout(() => setImportToast(false), 2500);
+  }
   const totalNights = stops.filter(s => !s.restDay).length - 1;
   const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
 
@@ -66,6 +103,25 @@ export default function MyTripSummary() {
 
   return (
     <main className="max-w-5xl mx-auto px-6 py-8 print:max-w-none print:px-4 print:py-2">
+      {sharedPlan && (
+        <div className="mb-6 p-4 rounded-2xl bg-forest/5 border border-forest/15 flex items-start gap-3 print:hidden">
+          <span className="material-symbols-outlined text-base text-forest mt-0.5">share</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-forest-deep">You&apos;re viewing a shared plan</p>
+            <p className="text-xs text-stone mt-0.5">
+              {plan.days}-day {plan.direction === "north_to_south" ? "N→S" : "S→N"} walk
+              {plan.startDate ? ` starting ${plan.startDate}` : ` in ${MONTHS[plan.month]}`}.
+              Save it to your own planner to customise.
+            </p>
+          </div>
+          <button
+            onClick={importToLocalPlanner}
+            className="px-4 py-2 rounded-xl text-[13px] font-semibold bg-forest text-white hover:bg-forest-deep transition-colors shrink-0"
+          >
+            {importToast ? "✓ Saved" : "Save to my planner"}
+          </button>
+        </div>
+      )}
       {/* Trip header */}
       <div className="mb-8 print:mb-4 bg-topo">
         <h1 className="text-3xl font-medium text-primary mb-2 print:text-2xl italic" style={{ fontFamily: "var(--font-serif)" }}>My Cotswold Way</h1>
