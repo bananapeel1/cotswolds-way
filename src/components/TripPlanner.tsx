@@ -30,6 +30,7 @@ import ReplanChatPanel from "@/components/ai/ReplanChatPanel";
 import WalkingStylePicker from "@/components/plan/WalkingStylePicker";
 import { usePace } from "@/contexts/PaceContext";
 import { ARCHETYPE_SCALAR, PACK_SCALAR } from "@/lib/plan-engine";
+import { trackEvent } from "@/lib/track";
 import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
@@ -118,8 +119,16 @@ export default function TripPlanner() {
       days: actualDays,
       requestedDays: actualDays !== plan.days ? plan.days : undefined,
     });
+    trackEvent("plan_created", {
+      source: "stepper",
+      days: actualDays,
+      direction: plan.direction,
+      dog_friendly: plan.dogFriendly,
+      total_stops: newStops.length,
+      stretched: actualDays !== plan.days,
+    });
     setStep(2);
-  }, [plan.days, plan.direction, updatePlan]);
+  }, [plan.days, plan.direction, plan.dogFriendly, updatePlan]);
 
   // "Use my original N days anyway" — restore the originally-requested day count
   // even though it'll produce a punishing plan. User is making the trade-off.

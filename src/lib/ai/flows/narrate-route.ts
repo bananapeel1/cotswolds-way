@@ -81,7 +81,7 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
 
   const prompt = `Route to narrate:
 
-Start${startLabel ? ` (${startLabel})` : ""}: lat ${loop.geometry.coordinates[0][1].toFixed(5)}, lng ${loop.geometry.coordinates[0][0].toFixed(5)}.
+Start${startLabel ? ` (${startLabel})` : ""}: lat ${(loop.geometry.coordinates[0][1] as number).toFixed(5)}, lng ${(loop.geometry.coordinates[0][0] as number).toFixed(5)}.
 Theme: ${theme} (${themeDescriptions[theme]}).
 Distance: ${km} km (${miles} miles), closed loop returning to start.
 Total ascent: ${loop.ascentM} m.

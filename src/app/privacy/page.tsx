@@ -43,21 +43,29 @@ We do not collect payment card details directly. All payments are processed secu
 We do not sell your personal information to third parties.`,
   },
   {
-    title: "4. Cookies and Tracking",
-    content: `We use cookies and similar technologies to:
+    title: "4. Cookies, Local Storage, and Analytics",
+    content: `We use minimal in-browser storage and self-hosted analytics:
 
-- Remember your preferences and login status.
-- Analyse how you use our site (via Google Analytics).
-- Display our interactive trail map (via Mapbox).
+- Local storage on your device to remember your itinerary draft, walking-pace preferences, and unit system (miles vs km). This data stays in your browser and is not transmitted to us.
+- Self-hosted event logs for outbound clicks, plan creation, and similar interactions. We log the page you were on, the action you took, and a referrer header. We do not set tracking cookies, do not use Google Analytics or third-party tracking SDKs, and do not collect IP addresses in a personally identifiable form.
+- Mapbox to display our interactive trail map (uses its own session storage to cache tiles).
 
-You can control cookies through your browser settings. Disabling cookies may affect some functionality, such as staying logged in or saving itinerary preferences.`,
+Because we do not set tracking cookies, no cookie consent banner is required for our own analytics. Third parties you click through to (booking sites, B&B websites) may set their own cookies — review their privacy policies separately.`,
   },
   {
-    title: "5. Data Security",
+    title: "5. Affiliate Links and Commissions",
+    content: `Some links on this site labelled "Book direct" or similar lead to accommodation providers' websites or booking platforms (such as Booking.com). When you click one and complete a booking, we may receive a commission from the provider. This is at no extra cost to you and does not change the price you pay.
+
+We disclose this both inline near affiliate links and in our site footer, in line with UK Advertising Standards Authority (ASA) and Competition and Markets Authority (CMA) guidance.
+
+Commission rates do not influence which properties appear in your itinerary — accommodations are selected by their proximity to the trail and how well they match your stated preferences.`,
+  },
+  {
+    title: "6. Data Security",
     content: `We implement appropriate technical and organisational measures to protect your personal data, including encryption in transit (TLS/SSL), secure database hosting via Supabase, and regular security reviews. However, no method of transmission over the internet is 100% secure, and we cannot guarantee absolute security.`,
   },
   {
-    title: "6. Your Rights",
+    title: "7. Your Rights",
     content: `Under UK data protection law (UK GDPR), you have the right to:
 
 - Access the personal data we hold about you.
@@ -70,19 +78,19 @@ You can control cookies through your browser settings. Disabling cookies may aff
 To exercise these rights, contact us at privacy@cotswoldway.com. We will respond within 30 days.`,
   },
   {
-    title: "7. Data Retention",
+    title: "8. Data Retention",
     content: `We retain your personal data for as long as necessary to provide our services and fulfil the purposes described in this policy. Account data is retained until you delete your account. Booking records are retained for 6 years for tax and legal compliance. Analytics data is retained in anonymised form indefinitely.`,
   },
   {
-    title: "8. Children's Privacy",
+    title: "9. Children's Privacy",
     content: `Our services are not directed at children under 16. We do not knowingly collect personal data from children. If you believe a child has provided us with personal data, please contact us and we will take steps to delete it.`,
   },
   {
-    title: "9. Changes to This Policy",
+    title: "10. Changes to This Policy",
     content: `We may update this privacy policy from time to time. We will notify you of significant changes by posting a notice on our website or sending you an email. The date at the top of this policy indicates when it was last revised.`,
   },
   {
-    title: "10. Contact Us",
+    title: "11. Contact Us",
     content: `If you have questions about this privacy policy or our data practices, contact us at:
 
 Email: privacy@cotswoldway.com

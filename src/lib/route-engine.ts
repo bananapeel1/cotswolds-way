@@ -233,9 +233,12 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
   const winner = built[0];
 
   // 5. Elevation profile for the winner via Open-Meteo (one batch).
-  const elev = await sampleElevation(winner.geometry.coordinates);
+  // GeoJSON's Position type permits 3-tuple [lng, lat, alt]; our internal
+  // Coord helpers only use [lng, lat]. Narrow at the boundary.
+  const coords = winner.geometry.coordinates as [number, number][];
+  const elev = await sampleElevation(coords);
   const { ascentM } = integrateElevation(elev);
-  const durationHours = toblerHoursForProfile(winner.geometry.coordinates, elev);
+  const durationHours = toblerHoursForProfile(coords, elev);
   const durationMin = Math.round(durationHours * 60);
 
   // 6. Final score with elevation factored in.

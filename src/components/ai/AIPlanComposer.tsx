@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Archetype, PlanState, DayStop } from "@/lib/plan-engine";
 import type { TripBrief, PlanRationale } from "@/lib/ai/schemas/trip-brief";
 import { usePace } from "@/contexts/PaceContext";
-import { trackOutboundClick } from "@/lib/track";
+import { trackEvent, trackOutboundClick } from "@/lib/track";
 
 /** Map the AI-extracted fitness enum to our pace archetype. */
 function fitnessToArchetype(fitness: TripBrief["fitness"]): Archetype {
@@ -49,6 +49,9 @@ export default function AIPlanComposer() {
   const [narration, setNarration] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const submit = useCallback(async () => {
@@ -81,6 +84,17 @@ export default function AIPlanComposer() {
       }
       planJson = (await res.json()) as PlanResult;
       setResult(planJson);
+      trackEvent("plan_created", {
+        source: "ai",
+        days: planJson.planState.days,
+        direction: planJson.planState.direction,
+        fitness: planJson.brief.fitness,
+        budget_tier: planJson.brief.budgetTier ?? null,
+        dog_friendly: planJson.brief.dogFriendly,
+        stops_with_accommodation: planJson.planState.stops.filter((s) => s.accommodation).length,
+        total_stops: planJson.planState.stops.length,
+        stretched: planJson.planState.requestedDays != null,
+      });
       const assistantMsg: ChatMessage = {
         role: "assistant",
         content: `Built a ${planJson.planState.days}-day plan with ${planJson.planState.stops.length} stops.`,
@@ -168,6 +182,39 @@ export default function AIPlanComposer() {
     if (saveAsDefault) setArchetype(archetype);
     router.push("/plan");
   }, [result, router, saveAsDefault, setArchetype]);
+
+  const sharePlan = useCallback(async () => {
+    if (!result || shareLoading) return;
+    setShareLoading(true);
+    setShareCopied(false);
+    try {
+      const res = await fetch("/api/plans", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          planState: { ...result.planState, paceOverride: fitnessToArchetype(result.brief.fitness) },
+          brief: result.brief,
+          source: "ai_plan",
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `share failed: ${res.status}`);
+      }
+      const { url } = (await res.json()) as { id: string; url: string };
+      setShareUrl(url);
+      trackEvent("plan_shared", { days: result.planState.days });
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+      } catch {
+        // clipboard blocked — URL is still rendered for the user to copy manually
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+    setShareLoading(false);
+  }, [result, shareLoading]);
 
   return (
     <div className="grid lg:grid-cols-[1fr_1.1fr] gap-6">
@@ -275,7 +322,25 @@ export default function AIPlanComposer() {
               loading={narrateLoading}
               rationale={result.rationale}
             />
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-[12px] text-stone min-w-0 flex-1">
+                {shareUrl ? (
+                  <span className="flex items-center gap-2 flex-wrap">
+                    <span className="text-forest-deep">{shareCopied ? "✓ Link copied" : "Share link"}:</span>
+                    <a href={shareUrl} className="text-tertiary hover:underline truncate" target="_blank" rel="noopener noreferrer">
+                      {shareUrl.replace(/^https?:\/\//, "")}
+                    </a>
+                  </span>
+                ) : (
+                  <button
+                    onClick={sharePlan}
+                    disabled={shareLoading}
+                    className="text-stone hover:text-forest-deep underline-offset-2 hover:underline disabled:opacity-50"
+                  >
+                    {shareLoading ? "Creating link…" : "Get a shareable link"}
+                  </button>
+                )}
+              </div>
               <button
                 onClick={openInPlanner}
                 className="px-6 py-3 rounded-full bg-tertiary text-white text-[13px] font-semibold hover:bg-terracotta transition-colors"

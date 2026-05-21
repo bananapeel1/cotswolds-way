@@ -11,6 +11,7 @@ import {
 import type { BudgetTier, TripBrief } from "@/lib/ai/schemas/trip-brief";
 import propertiesData from "@/data/properties.json";
 import type { Property } from "@/lib/queries";
+import { trackEvent } from "@/lib/track";
 
 const properties = propertiesData as Property[];
 
@@ -141,7 +142,15 @@ export default function BudgetTierCompare({
               )}
               <div className="text-[11px] italic text-stone mb-3">&ldquo;{meta.tagline}&rdquo;</div>
               <button
-                onClick={() => onApplyTier(v.accommodationsByDay, v.tier)}
+                onClick={() => {
+                  trackEvent("tier_applied", {
+                    tier: v.tier,
+                    relaxed_count: v.relaxedCount,
+                    unserved_count: v.unservedCount,
+                    total_cost: v.cost.total,
+                  });
+                  onApplyTier(v.accommodationsByDay, v.tier);
+                }}
                 className="mt-auto py-2 px-3 rounded-lg bg-forest text-white text-[12px] font-semibold hover:bg-forest-deep transition-colors"
               >
                 Apply tier

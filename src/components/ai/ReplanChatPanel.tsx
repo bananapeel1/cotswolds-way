@@ -10,6 +10,7 @@ import {
 import type { ReplanMutation } from "@/lib/ai/schemas/trip-brief";
 import propertiesData from "@/data/properties.json";
 import type { Property } from "@/lib/queries";
+import { trackEvent } from "@/lib/track";
 
 const properties = propertiesData as Property[];
 
@@ -65,6 +66,7 @@ export default function ReplanChatPanel({
   const applyMutation = useCallback(() => {
     if (!pending) return;
     const m = pending.mutation;
+    trackEvent("plan_modified", { kind: "replan", mutation: m.type });
     try {
       switch (m.type) {
         case "shorten-day": {

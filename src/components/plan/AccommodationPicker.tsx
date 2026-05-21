@@ -144,6 +144,11 @@ export default function AccommodationPicker({
             <span>Best match — not flagged as dog-friendly. Confirm with the host before booking.</span>
           </p>
         )}
+        {bookUrl && (
+          <p className="text-[10px] text-stone-light italic">
+            We may earn a commission — at no extra cost to you.
+          </p>
+        )}
         <div className="flex items-center gap-2 text-[11px]">
           <button
             onClick={() => setOpen(!open)}

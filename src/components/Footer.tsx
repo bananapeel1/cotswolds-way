@@ -94,7 +94,11 @@ export default function Footer() {
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-primary-container flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-primary-fixed/60">
+      <div className="max-w-7xl mx-auto mt-12 pt-6 border-t border-primary-container/60 text-[11px] text-primary-fixed/60">
+        We may earn a commission when you book through &ldquo;Book direct&rdquo; links on this site, at no extra cost to you.{" "}
+        <Link href="/privacy" className="underline-offset-2 hover:underline hover:text-white">How we use this</Link>.
+      </div>
+      <div className="max-w-7xl mx-auto mt-6 pt-6 border-t border-primary-container flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase tracking-widest text-primary-fixed/60">
         <div>&copy; 2025 The Cotswolds Way. Part of the National Trails collection.</div>
         <div className="flex gap-6">
           <Link href="/privacy" className="hover:text-white transition-colors">

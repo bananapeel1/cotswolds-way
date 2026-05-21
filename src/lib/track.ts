@@ -15,19 +15,28 @@ export interface OutboundClick {
   meta?: Record<string, unknown>;
 }
 
-/** Fire-and-forget event for an outbound link click. Uses sendBeacon when
- * available so the request survives navigation; falls back to keepalive
- * fetch. Silently no-ops on failure — analytics must never break UX. */
-export function trackOutboundClick(ev: OutboundClick): void {
+/** In-product event names. snake_case, present-tense. Keep this list short
+ * and meaningful — every new event adds maintenance cost and noise. */
+export type EventName =
+  | "plan_created"        // AI or stepper produced a new plan
+  | "plan_modified"       // replan mutation applied, pace changed, etc.
+  | "plan_shared"         // user generated a /plans/[id] share link
+  | "plan_opened_shared"  // visitor landed on a /plans/[id] page
+  | "pace_changed"        // user toggled global pace archetype/pack
+  | "tier_applied";       // budget tier swap pushed to plan
+
+/** Server endpoint that accepts both shapes. */
+const ANALYTICS_URL = "/api/analytics";
+
+function send(payload: string): void {
   if (typeof window === "undefined") return;
   try {
-    const payload = JSON.stringify(ev);
     if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
       const blob = new Blob([payload], { type: "application/json" });
-      navigator.sendBeacon("/api/analytics", blob);
+      navigator.sendBeacon(ANALYTICS_URL, blob);
       return;
     }
-    void fetch("/api/analytics", {
+    void fetch(ANALYTICS_URL, {
       method: "POST",
       body: payload,
       headers: { "Content-Type": "application/json" },
@@ -36,4 +45,16 @@ export function trackOutboundClick(ev: OutboundClick): void {
   } catch {
     // ignore — analytics must never break UX
   }
+}
+
+/** Fire-and-forget event for an outbound link click. */
+export function trackOutboundClick(ev: OutboundClick): void {
+  send(JSON.stringify(ev));
+}
+
+/** Fire-and-forget event for an in-product action. Use sparingly — only
+ * events that materially help understand the funnel (created, modified,
+ * shared, opened). One canonical funnel beats fifty noisy events. */
+export function trackEvent(name: EventName, props?: Record<string, unknown>): void {
+  send(JSON.stringify({ name, props }));
 }
