@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Manrope, Newsreader } from "next/font/google";
 import { UnitProvider } from "@/contexts/UnitContext";
+import { PaceProvider } from "@/contexts/PaceContext";
 import "./globals.css";
 
 const inter = Inter({
@@ -119,7 +120,9 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col font-body bg-background text-on-surface">
-        <UnitProvider>{children}</UnitProvider>
+        <UnitProvider>
+          <PaceProvider>{children}</PaceProvider>
+        </UnitProvider>
       </body>
     </html>
   );

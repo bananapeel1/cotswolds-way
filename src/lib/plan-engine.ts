@@ -78,6 +78,28 @@ export interface Connection {
   terrain: string;
 }
 
+/** Walking-style archetype — drives a multiplier on Tobler-predicted walking
+ * times. See ARCHETYPE_SCALAR. Independent of physical day difficulty: a fit
+ * walker still finds 22mi/2000ft strenuous, they just do it faster. */
+export type Archetype = "gentle" | "moderate" | "fit" | "strong";
+
+/** Pack weight bucket — small additional multiplier on top of archetype. */
+export type Pack = "day" | "overnight" | "full";
+
+/** Time multipliers vs Tobler-predicted hours. >1 means slower. */
+export const ARCHETYPE_SCALAR: Record<Archetype, number> = {
+  gentle: 1.25,
+  moderate: 1.10,
+  fit: 0.95,
+  strong: 0.80,
+};
+
+export const PACK_SCALAR: Record<Pack, number> = {
+  day: 1.00,
+  overnight: 1.05,
+  full: 1.10,
+};
+
 export interface PlanState {
   direction: "north_to_south" | "south_to_north";
   days: number;
@@ -87,6 +109,11 @@ export interface PlanState {
   startDate?: string;
   dogFriendly: boolean;
   stops: DayStop[];
+  /** Per-plan pace override, set by the AI handoff so the LLM's extracted
+   * fitness applies to this specific plan without overwriting the user's
+   * global PaceContext preference. Not URL-encoded — shareable links
+   * represent a route, not a body. */
+  paceOverride?: Archetype;
 }
 
 export interface CostBreakdown {
@@ -461,7 +488,7 @@ const M_PER_FT = 0.3048;
  *
  * Falls back to Naismith-equivalent if the profile is empty for that range.
  */
-export function estimateWalkingTime(miles: number, ascentM: number, descentM: number = 0): string {
+export function estimateWalkingTime(miles: number, ascentM: number, descentM: number = 0, scalar: number = 1): string {
   // Distribute ascent/descent proportionally across the distance for a coarse
   // Tobler estimate when we don't have a profile slice.
   const km = miles * KM_PER_MILE;
@@ -475,14 +502,14 @@ export function estimateWalkingTime(miles: number, ascentM: number, descentM: nu
   const slopeDown = down > 0 ? -descentKm / down : 0;
   const vUp = 6 * Math.exp(-3.5 * Math.abs(slopeUp + 0.05));
   const vDown = 6 * Math.exp(-3.5 * Math.abs(slopeDown + 0.05));
-  const hours = up / vUp + down / vDown;
+  const hours = (up / vUp + down / vDown) * scalar;
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}h ${m.toString().padStart(2, "0")}m`;
 }
 
 /** More accurate walking time integrated over the real elevation profile. */
-export function walkingTimeBetween(startMile: number, endMile: number): string {
+export function walkingTimeBetween(startMile: number, endMile: number, scalar: number = 1): string {
   const [lo, hi] = startMile < endMile ? [startMile, endMile] : [endMile, startMile];
   let hours = 0;
   let prev: [number, number] | null = null;
@@ -503,6 +530,7 @@ export function walkingTimeBetween(startMile: number, endMile: number): string {
     // Fallback: flat Tobler speed (~5 km/h)
     hours = (hi - lo) * KM_PER_MILE / 5;
   }
+  hours *= scalar;
   const h = Math.floor(hours);
   const m = Math.round((hours - h) * 60);
   return `${h}h ${m.toString().padStart(2, "0")}m`;
@@ -641,7 +669,7 @@ export function autoStops(days: number, direction: "north_to_south" | "south_to_
   return stops;
 }
 
-export function computeConnections(stops: DayStop[], direction: "north_to_south" | "south_to_north"): Connection[] {
+export function computeConnections(stops: DayStop[], direction: "north_to_south" | "south_to_north", scalar: number = 1): Connection[] {
   const connections: Connection[] = [];
   const startVillage = direction === "north_to_south" ? VILLAGES[0].name : VILLAGES[VILLAGES.length - 1].name;
 
@@ -660,7 +688,7 @@ export function computeConnections(stops: DayStop[], direction: "north_to_south"
     connections.push({
       from, to, distance: miles,
       elevationGain: profile.ascentFt,
-      walkTime: estimateWalkingTime(miles, profile.ascentM, profile.descentM),
+      walkTime: estimateWalkingTime(miles, profile.ascentM, profile.descentM, scalar),
       difficulty, terrain,
     });
   }

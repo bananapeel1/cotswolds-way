@@ -27,6 +27,9 @@ import PlansLibrary from "@/components/plan/PlansLibrary";
 import PlanWarnings from "@/components/plan/PlanWarnings";
 import BudgetTierCompare from "@/components/ai/BudgetTierCompare";
 import ReplanChatPanel from "@/components/ai/ReplanChatPanel";
+import WalkingStylePicker from "@/components/plan/WalkingStylePicker";
+import { usePace } from "@/contexts/PaceContext";
+import { ARCHETYPE_SCALAR, PACK_SCALAR } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
@@ -55,6 +58,7 @@ export default function TripPlanner() {
   const [shareToast, setShareToast] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const { formatDistance, formatElevation, formatElevationM, formatTemp, formatTempRange, trailTotal, distanceUnit } = useUnits();
+  const { archetype: globalArchetype, pack } = usePace();
   // UI-only preference toggles (no data model backing yet)
   const [accessibleStops, setAccessibleStops] = useState(false);
   const [diningNearby, setDiningNearby] = useState(false);
@@ -77,7 +81,13 @@ export default function TripPlanner() {
   }, [hydrated, plan.stops.length]);
 
   const stops = plan.stops;
-  const connections = useMemo(() => stops.length > 0 ? computeConnections(stops, plan.direction) : [], [stops, plan.direction]);
+  // Per-plan override (set by the AI handoff) wins over the global preference.
+  const effectiveArchetype = plan.paceOverride ?? globalArchetype ?? "moderate";
+  const paceScalar = ARCHETYPE_SCALAR[effectiveArchetype] * PACK_SCALAR[pack];
+  const connections = useMemo(
+    () => stops.length > 0 ? computeConnections(stops, plan.direction, paceScalar) : [],
+    [stops, plan.direction, paceScalar],
+  );
   const weather = WEATHER_DATA[plan.month];
 
   // Live forecast for the trip dates (if within the 16-day window). Falls back
@@ -282,6 +292,9 @@ export default function TripPlanner() {
               </div>
             </div>
           </div>
+
+          {/* Walking style — personalises the "leave by" times */}
+          <WalkingStylePicker />
 
           {/* Month + Preferences row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

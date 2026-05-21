@@ -2,8 +2,19 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { PlanState, DayStop } from "@/lib/plan-engine";
+import type { Archetype, PlanState, DayStop } from "@/lib/plan-engine";
 import type { TripBrief, PlanRationale } from "@/lib/ai/schemas/trip-brief";
+import { usePace } from "@/contexts/PaceContext";
+
+/** Map the AI-extracted fitness enum to our pace archetype. */
+function fitnessToArchetype(fitness: TripBrief["fitness"]): Archetype {
+  switch (fitness) {
+    case "relaxed": return "gentle";
+    case "moderate": return "moderate";
+    case "fit": return "fit";
+    case "very-fit": return "strong";
+  }
+}
 
 const PLAN_STORAGE_KEY = "cotswold-plan";
 const HISTORY_MAX = 20;
@@ -28,6 +39,7 @@ const EXAMPLES = [
 
 export default function AIPlanComposer() {
   const router = useRouter();
+  const { setArchetype } = usePace();
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [planLoading, setPlanLoading] = useState(false);
@@ -35,6 +47,7 @@ export default function AIPlanComposer() {
   const [result, setResult] = useState<PlanResult | null>(null);
   const [narration, setNarration] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const submit = useCallback(async () => {
@@ -138,9 +151,11 @@ export default function AIPlanComposer() {
 
   const openInPlanner = useCallback(() => {
     if (!result) return;
+    const archetype = fitnessToArchetype(result.brief.fitness);
+    const planWithPace: PlanState = { ...result.planState, paceOverride: archetype };
     const stored = {
       version: 1,
-      plan: result.planState,
+      plan: planWithPace,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -149,8 +164,9 @@ export default function AIPlanComposer() {
       setError("Couldn't save plan to your browser. Try again with cookies/storage enabled.");
       return;
     }
+    if (saveAsDefault) setArchetype(archetype);
     router.push("/plan");
-  }, [result, router]);
+  }, [result, router, saveAsDefault, setArchetype]);
 
   return (
     <div className="grid lg:grid-cols-[1fr_1.1fr] gap-6">
@@ -253,7 +269,16 @@ export default function AIPlanComposer() {
               loading={narrateLoading}
               rationale={result.rationale}
             />
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <label className="flex items-center gap-2 text-[12px] text-stone cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={saveAsDefault}
+                  onChange={(e) => setSaveAsDefault(e.target.checked)}
+                  className="accent-forest"
+                />
+                Save <span className="font-semibold text-forest-deep">{fitnessToArchetype(result.brief.fitness)}</span> pace as my default
+              </label>
               <button
                 onClick={openInPlanner}
                 className="px-6 py-3 rounded-full bg-tertiary text-white text-[13px] font-semibold hover:bg-terracotta transition-colors"
