@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import propertiesRaw from "@/data/properties.json";
 import type { PlannedAccommodation } from "@/lib/plan-engine";
+import { trackOutboundClick } from "@/lib/track";
 
 interface Property {
   id: number | string;
@@ -17,9 +18,11 @@ interface Property {
   review_count: number | null;
   is_dog_friendly: boolean;
   image_url: string | null;
+  website_url: string | null;
 }
 
 const PROPERTIES = propertiesRaw as unknown as Property[];
+const PROPERTY_BY_SLUG = new Map(PROPERTIES.map((p) => [p.slug, p]));
 
 const TYPE_LABELS: Record<string, string> = {
   hotel: "Hotel",
@@ -68,26 +71,94 @@ export default function AccommodationPicker({
   }, [village, dogFriendly]);
 
   if (selected) {
+    // Look up the full record so we can render price/rating/website even when
+    // the cached PlannedAccommodation pre-dates those fields landing on the type.
+    const full = PROPERTY_BY_SLUG.get(selected.slug);
+    const bookUrl = selected.websiteUrl ?? full?.website_url ?? null;
+    const price = full?.price_per_night && full.price_per_night > 0 ? full.price_per_night : null;
+    const rating = full?.rating && full.rating > 0 ? full.rating : null;
+    const image = selected.image ?? full?.image_url ?? null;
+
     return (
-      <div className="flex items-center gap-2 px-5 pb-4 pl-[88px] flex-wrap">
-        <Link
-          href={`/property/${selected.slug}`}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-forest text-white hover:bg-forest-deep transition-colors"
-        >
-          🛏️ {selected.name}
-        </Link>
-        <button
-          onClick={() => setOpen(!open)}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-stone hover:text-forest px-2 py-1 rounded-full transition-colors"
-        >
-          Change
-        </button>
-        <button
-          onClick={() => onClear(day)}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-stone hover:text-terracotta px-2 py-1 rounded-full transition-colors"
-        >
-          Clear
-        </button>
+      <div className="px-5 pb-4 pl-[88px] space-y-2">
+        <div className="flex items-start gap-3">
+          {image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={image}
+              alt=""
+              className="w-14 h-14 rounded-lg object-cover shrink-0 bg-cream-dark"
+              loading="lazy"
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <Link
+              href={`/property/${selected.slug}`}
+              className="block text-[14px] font-semibold text-ink hover:text-forest-deep truncate"
+            >
+              {selected.name}
+            </Link>
+            <div className="flex items-center gap-2 text-[11px] text-stone mt-0.5 flex-wrap">
+              <span className="capitalize">{TYPE_LABELS[selected.propertyType] ?? selected.propertyType}</span>
+              {rating !== null && (
+                <span className="inline-flex items-center gap-0.5 text-ink-light">
+                  <span className="text-amber-warm">★</span>
+                  <span className="tabular-nums">{rating.toFixed(1)}</span>
+                  {full?.review_count ? <span className="text-stone-light">({full.review_count})</span> : null}
+                </span>
+              )}
+              {price !== null && (
+                <span className="font-semibold text-ink-light tabular-nums">£{price}<span className="text-stone-light font-normal">/night</span></span>
+              )}
+            </div>
+          </div>
+          {bookUrl ? (
+            <a
+              href={bookUrl}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              onClick={() =>
+                trackOutboundClick({
+                  source: "planner",
+                  target: bookUrl,
+                  label: selected.name,
+                  meta: { slug: selected.slug, day, village: selected.village },
+                })
+              }
+              className="inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-[12px] font-semibold bg-tertiary text-white hover:bg-terracotta transition-colors shrink-0 whitespace-nowrap"
+            >
+              Book direct ↗
+            </a>
+          ) : (
+            <Link
+              href={`/property/${selected.slug}`}
+              className="inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-[12px] font-semibold bg-tertiary text-white hover:bg-terracotta transition-colors shrink-0 whitespace-nowrap"
+            >
+              View ↗
+            </Link>
+          )}
+        </div>
+        {selected.relaxedConstraints?.includes("dog-friendly") && (
+          <p className="text-[11px] text-brass-dark flex items-start gap-1">
+            <span>ⓘ</span>
+            <span>Best match — not flagged as dog-friendly. Confirm with the host before booking.</span>
+          </p>
+        )}
+        <div className="flex items-center gap-2 text-[11px]">
+          <button
+            onClick={() => setOpen(!open)}
+            className="text-stone hover:text-forest underline-offset-2 hover:underline"
+          >
+            {open ? "Close" : "Change stay"}
+          </button>
+          <span className="text-stone-light">·</span>
+          <button
+            onClick={() => onClear(day)}
+            className="text-stone hover:text-terracotta underline-offset-2 hover:underline"
+          >
+            Remove
+          </button>
+        </div>
         {open && (
           <PickerList
             matches={matches}
@@ -101,6 +172,7 @@ export default function AccommodationPicker({
                 village: p.village,
                 propertyType: p.property_type,
                 image: p.image_url ?? undefined,
+                websiteUrl: p.website_url ?? null,
               });
               setOpen(false);
             }}
@@ -137,6 +209,7 @@ export default function AccommodationPicker({
               village: p.village,
               propertyType: p.property_type,
               image: p.image_url ?? undefined,
+              websiteUrl: p.website_url ?? null,
             });
             setOpen(false);
           }}

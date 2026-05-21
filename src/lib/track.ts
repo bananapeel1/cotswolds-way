@@ -2,6 +2,7 @@
  * tiers by where the user clicked from. */
 export type OutboundSource =
   | "ai_plan"
+  | "planner"     // /plan Step 2 day card — manual or post-AI-handoff
   | "search"
   | "browse"
   | "property"
