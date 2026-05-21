@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
-  autoStops, autoStopsAdaptive, computeConnections, countListingsByVillage, getStartVillage, getDayMileRange,
+  autoStops, computeConnections, countListingsByVillage, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
   encodePlanToURL, planFromWishlist, TRAIL_TOTAL_MILES,
   TRAIL_TOTAL_ASCENT_M, TRAIL_TOTAL_DESCENT_M,
@@ -113,35 +113,17 @@ export default function TripPlanner() {
 
   const buildRoute = useCallback(() => {
     const listings = countListingsByVillage(propertiesData as Array<{ village: string }>);
-    const { stops: newStops, actualDays } = autoStopsAdaptive(plan.days, plan.direction, listings);
-    updatePlan({
-      stops: newStops,
-      days: actualDays,
-      requestedDays: actualDays !== plan.days ? plan.days : undefined,
-    });
+    const newStops = autoStops(plan.days, plan.direction, listings);
+    updatePlan({ stops: newStops });
     trackEvent("plan_created", {
       source: "stepper",
-      days: actualDays,
+      days: plan.days,
       direction: plan.direction,
       dog_friendly: plan.dogFriendly,
       total_stops: newStops.length,
-      stretched: actualDays !== plan.days,
     });
     setStep(2);
   }, [plan.days, plan.direction, plan.dogFriendly, updatePlan]);
-
-  // "Use my original N days anyway" — restore the originally-requested day count
-  // even though it'll produce a punishing plan. User is making the trade-off.
-  const useOriginalDays = useCallback(() => {
-    if (!plan.requestedDays) return;
-    const listings = countListingsByVillage(propertiesData as Array<{ village: string }>);
-    const newStops = autoStops(plan.requestedDays, plan.direction, listings);
-    updatePlan({
-      stops: newStops,
-      days: plan.requestedDays,
-      requestedDays: undefined,
-    });
-  }, [plan.requestedDays, plan.direction, updatePlan]);
 
   // Relative time for "last saved"
   const savedLabel = useMemo(() => {
@@ -479,27 +461,6 @@ export default function TripPlanner() {
               </span>
             </div>
           </div>
-
-          {/* Stretch banner — only when the planner extended a too-aggressive
-              request to keep daily mileage reasonable. Replaces the old
-              wall-of-warnings approach: fix at the source, surface one line. */}
-          {plan.requestedDays && plan.requestedDays !== plan.days && (
-            <div className="rounded-[16px] border border-tertiary/25 bg-tertiary/5 px-4 py-3 flex items-start gap-3">
-              <span className="material-symbols-outlined text-tertiary text-xl shrink-0 mt-px">auto_awesome</span>
-              <div className="flex-1 text-[13px] leading-snug">
-                <div className="font-semibold text-ink">Stretched to {plan.days} days</div>
-                <div className="text-stone mt-0.5">
-                  {plan.requestedDays} days would have averaged over 15 miles a day with several strenuous sections. We extended it to keep the daily walking comfortable.
-                </div>
-              </div>
-              <button
-                onClick={useOriginalDays}
-                className="shrink-0 text-[12px] font-semibold text-tertiary hover:text-terracotta underline-offset-2 hover:underline self-center"
-              >
-                Use {plan.requestedDays} anyway
-              </button>
-            </div>
-          )}
 
           {/* Interactive route map */}
           <div className="bg-white rounded-[20px] p-2 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">
