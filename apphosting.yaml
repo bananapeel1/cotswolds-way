@@ -34,6 +34,14 @@ env:
     availability:
       - RUNTIME
 
+  # Google AI Studio key for the Gemini-powered trip planner.
+  # Store the value in Google Secret Manager under the name GEMINI_API_KEY:
+  #   firebase apphosting:secrets:set GEMINI_API_KEY
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - RUNTIME
+
   # Booking.com integration disabled until credentials are issued.
   # When ready, add BOOKING_API_TOKEN and BOOKING_AFFILIATE_ID as
   # secrets and BOOKING_API_BASE_URL as a value here.

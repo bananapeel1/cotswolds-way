@@ -1,19 +1,16 @@
 import { genkit } from "genkit";
-import { vertexAI, gemini } from "@genkit-ai/vertexai";
+import { googleAI } from "@genkit-ai/google-genai";
 
-// Genkit instance with Vertex AI plugin.
-// Authentication: Application Default Credentials.
-//   - Cloud Run (App Hosting): metadata server, automatic.
-//   - Local dev: run `gcloud auth application-default login` once.
+// Genkit instance using the Gemini Developer API (Google AI Studio).
+// Authentication: API key via GEMINI_API_KEY env var.
+//   - Local dev: set GEMINI_API_KEY in .env.local (get key at https://aistudio.google.com/apikey).
+//   - Production (Firebase App Hosting): wired in apphosting.yaml as a Secret Manager secret.
 //
-// Region must match where Vertex models are deployed for your project.
-// europe-west4 has Gemini 2.5 Flash available and matches the App Hosting backend.
+// We chose the AI Studio API over Vertex AI to avoid GCP IAM setup. The same
+// `@genkit-ai/google-genai` plugin can be repointed at Vertex AI later if we
+// need EU data residency or enterprise quotas — change the import to its
+// `vertexAI` export, no application-code changes required.
 export const ai = genkit({
-  plugins: [
-    vertexAI({
-      location: "europe-west4",
-      projectId: process.env.GOOGLE_CLOUD_PROJECT || "cw-website-48e46",
-    }),
-  ],
-  model: gemini("gemini-2.5-flash"),
+  plugins: [googleAI()],
+  model: googleAI.model("gemini-2.5-flash"),
 });
