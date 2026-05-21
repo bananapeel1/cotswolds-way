@@ -48,16 +48,29 @@ function transcript(messages: { role: "user" | "assistant"; content: string }[])
   return messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
 }
 
+/** Coerce a raw model output into a fully-populated TripBrief.
+ *
+ * Why this exists: Genkit's structured-output mode doesn't reliably apply
+ * Zod `.default([])` clauses when the LLM omits a field — the generated JSON
+ * schema sent to Gemini doesn't carry the default through, and Genkit's
+ * parsing step doesn't re-run Zod with default-filling. Result: `mustVisit`
+ * et al. come back as `undefined` and the next `for...of` over them throws
+ * "X is not iterable". Re-running TripBriefSchema.parse() fills the defaults
+ * cleanly. */
+function normalizeBrief(raw: unknown): TripBrief {
+  return TripBriefSchema.parse(raw);
+}
+
 function validateBrief(brief: TripBrief): { brief: TripBrief; notes: string[] } {
   const notes: string[] = [];
   const mustVisit: string[] = [];
-  for (const v of brief.mustVisit) {
+  for (const v of brief.mustVisit ?? []) {
     const canon = canonicaliseVillage(v);
     if (canon) mustVisit.push(canon);
     else notes.push(`mustVisit "${v}" not a canonical village`);
   }
   const avoidVillages: string[] = [];
-  for (const v of brief.avoidVillages) {
+  for (const v of brief.avoidVillages ?? []) {
     const canon = canonicaliseVillage(v);
     if (canon) avoidVillages.push(canon);
     else notes.push(`avoidVillages "${v}" not a canonical village`);
@@ -84,11 +97,11 @@ export const extractBriefFlow = ai.defineFlow(
       config: { temperature: 0.2 },
     };
 
-    let result = await ai.generate(baseRequest);
-    let brief = result.output;
-    if (!brief) {
+    const result = await ai.generate(baseRequest);
+    if (!result.output) {
       throw new Error("extractBrief: model returned no structured output");
     }
+    const brief = normalizeBrief(result.output);
 
     let { brief: cleaned, notes } = validateBrief(brief);
 
@@ -98,8 +111,8 @@ export const extractBriefFlow = ai.defineFlow(
         ...baseRequest,
         prompt: `${baseRequest.prompt}\n\n${RETRY_GUIDANCE(notes)}`,
       });
-      const retryBrief = retry.output;
-      if (retryBrief) {
+      if (retry.output) {
+        const retryBrief = normalizeBrief(retry.output);
         const revalidated = validateBrief(retryBrief);
         cleaned = revalidated.brief;
         notes = revalidated.notes;
