@@ -3,7 +3,7 @@ import { z } from "zod";
 import { extractBriefFlow } from "@/lib/ai/flows/extract-brief";
 import {
   applyBriefToStops,
-  autoStops,
+  autoStopsAdaptive,
   countListingsByVillage,
   daysFromFitness,
   type PlanState,
@@ -41,17 +41,18 @@ export async function POST(req: NextRequest) {
   try {
     const { brief, validationNotes } = await extractBriefFlow({ messages: body.messages });
 
-    const days = brief.days ?? daysFromFitness(brief.fitness);
+    const requestedDays = brief.days ?? daysFromFitness(brief.fitness);
     const direction = brief.direction ?? "north_to_south";
-    const stops = autoStops(days, direction, listingsPerVillage);
+    const { stops, actualDays } = autoStopsAdaptive(requestedDays, direction, listingsPerVillage);
     const { stops: enrichedStops, rationale } = applyBriefToStops(stops, brief, properties);
 
     const planState: PlanState = {
       direction,
-      days,
+      days: actualDays,
       month: brief.startDate ? new Date(brief.startDate).getUTCMonth() : 4,
       startDate: brief.startDate,
       dogFriendly: brief.dogFriendly,
+      requestedDays: actualDays !== requestedDays ? requestedDays : undefined,
       stops: enrichedStops,
     };
 

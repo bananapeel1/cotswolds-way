@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
-  autoStops, computeConnections, countListingsByVillage, getStartVillage, getDayMileRange,
+  autoStops, autoStopsAdaptive, computeConnections, countListingsByVillage, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
   encodePlanToURL, planFromWishlist, TRAIL_TOTAL_MILES,
   TRAIL_TOTAL_ASCENT_M, TRAIL_TOTAL_DESCENT_M,
@@ -25,7 +25,6 @@ import TripPrep from "@/components/plan/TripPrep";
 import DayAmenities from "@/components/plan/DayAmenities";
 import AccommodationPicker from "@/components/plan/AccommodationPicker";
 import PlansLibrary from "@/components/plan/PlansLibrary";
-import PlanWarnings from "@/components/plan/PlanWarnings";
 import BudgetTierCompare from "@/components/ai/BudgetTierCompare";
 import ReplanChatPanel from "@/components/ai/ReplanChatPanel";
 import WalkingStylePicker from "@/components/plan/WalkingStylePicker";
@@ -113,10 +112,27 @@ export default function TripPlanner() {
 
   const buildRoute = useCallback(() => {
     const listings = countListingsByVillage(propertiesData as Array<{ village: string }>);
-    const newStops = autoStops(plan.days, plan.direction, listings);
-    updatePlan({ stops: newStops });
+    const { stops: newStops, actualDays } = autoStopsAdaptive(plan.days, plan.direction, listings);
+    updatePlan({
+      stops: newStops,
+      days: actualDays,
+      requestedDays: actualDays !== plan.days ? plan.days : undefined,
+    });
     setStep(2);
   }, [plan.days, plan.direction, updatePlan]);
+
+  // "Use my original N days anyway" — restore the originally-requested day count
+  // even though it'll produce a punishing plan. User is making the trade-off.
+  const useOriginalDays = useCallback(() => {
+    if (!plan.requestedDays) return;
+    const listings = countListingsByVillage(propertiesData as Array<{ village: string }>);
+    const newStops = autoStops(plan.requestedDays, plan.direction, listings);
+    updatePlan({
+      stops: newStops,
+      days: plan.requestedDays,
+      requestedDays: undefined,
+    });
+  }, [plan.requestedDays, plan.direction, updatePlan]);
 
   // Relative time for "last saved"
   const savedLabel = useMemo(() => {
@@ -413,8 +429,10 @@ export default function TripPlanner() {
          STEP 2 — YOUR ROUTE
       ═══════════════════════════════════════════════════════════════════════ */}
       {step === 2 && stops.length > 0 && (() => {
-        const totalNights = stops.filter(s => !s.restDay).length - 1;
-        const bookedNights = stops.filter(s => s.accommodation && !s.restDay).length;
+        // One stay per walking day. Don't subtract — every day's stop has its
+        // own overnight; "X/Y stays booked" reads naturally to walkers.
+        const totalStays = stops.filter(s => !s.restDay).length;
+        const bookedStays = stops.filter(s => s.accommodation && !s.restDay).length;
         // Total climb of the plan = sum of each leg's ascent. For full
         // end-to-end plans this equals the trail-wide total (~3,845 m).
         const totalAscentM = connections.reduce((sum, c) => sum + (c?.elevationGain ?? 0) / 3.28084, 0);
@@ -443,9 +461,9 @@ export default function TripPlanner() {
                 ⛰️ {formatElevationM(Math.round(totalAscentM))} climb
               </span>
               <span className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium ${
-                bookedNights === totalNights && totalNights > 0 ? "bg-forest/6 text-forest" : "bg-terracotta/8 text-terracotta"
+                bookedStays === totalStays && totalStays > 0 ? "bg-forest/6 text-forest" : "bg-terracotta/8 text-terracotta"
               }`}>
-                🛏️ {bookedNights}/{totalNights} nights booked
+                🛏️ {bookedStays}/{totalStays} stays
               </span>
               <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium bg-amber-warm/8 text-brass-dark">
                 ☀️ {formatTempRange(weather.tempLow, weather.tempHigh)}
@@ -453,8 +471,26 @@ export default function TripPlanner() {
             </div>
           </div>
 
-          {/* Plan warnings — long days, back-to-backs, missing bookings */}
-          <PlanWarnings stops={stops} onHighlightDays={setHighlightDays} />
+          {/* Stretch banner — only when the planner extended a too-aggressive
+              request to keep daily mileage reasonable. Replaces the old
+              wall-of-warnings approach: fix at the source, surface one line. */}
+          {plan.requestedDays && plan.requestedDays !== plan.days && (
+            <div className="rounded-[16px] border border-tertiary/25 bg-tertiary/5 px-4 py-3 flex items-start gap-3">
+              <span className="material-symbols-outlined text-tertiary text-xl shrink-0 mt-px">auto_awesome</span>
+              <div className="flex-1 text-[13px] leading-snug">
+                <div className="font-semibold text-ink">Stretched to {plan.days} days</div>
+                <div className="text-stone mt-0.5">
+                  {plan.requestedDays} days would have averaged over 15 miles a day with several strenuous sections. We extended it to keep the daily walking comfortable.
+                </div>
+              </div>
+              <button
+                onClick={useOriginalDays}
+                className="shrink-0 text-[12px] font-semibold text-tertiary hover:text-terracotta underline-offset-2 hover:underline self-center"
+              >
+                Use {plan.requestedDays} anyway
+              </button>
+            </div>
+          )}
 
           {/* Interactive route map */}
           <div className="bg-white rounded-[20px] p-2 shadow-[0_1px_3px_rgba(30,63,43,0.06)]">

@@ -119,6 +119,11 @@ export interface PlanState {
    * global PaceContext preference. Not URL-encoded — shareable links
    * represent a route, not a body. */
   paceOverride?: Archetype;
+  /** Original day count the user (or AI) asked for, BEFORE the adaptive
+   * planner stretched it to keep daily mileage reasonable. Only set when
+   * actualDays !== requestedDays. UI uses this to show a one-line
+   * "Stretched to N — Use X anyway?" banner. */
+  requestedDays?: number;
 }
 
 export interface CostBreakdown {
@@ -706,6 +711,54 @@ export function autoStops(
   });
 
   return stops;
+}
+
+// ─── Difficulty-aware adaptive planner ─────────────────────────────────────
+// autoStops by itself does whatever day-count the caller asks for — even when
+// that produces all-strenuous, can't-actually-walk plans (e.g. 5 days = 33
+// km/day averaging walkScore 9+). autoStopsAdaptive wraps it: if the produced
+// plan is unreasonable, retry with +1 day until it isn't, up to a hard cap.
+// The original requested day count is returned so the UI can offer a one-tap
+// "use my original" revert.
+
+/** A daily plan is "unreasonable" when ANY day is biomechanically punishing.
+ * We treat walkScore 9+ as the threshold; that's a 20mi+ strenuous day in the
+ * walkScore formula. Avg-miles check is a secondary guard for short trips
+ * where a single 17mi day still passes the score test. */
+function isPlanUnreasonable(stops: DayStop[]): boolean {
+  if (stops.length === 0) return false;
+  const maxWalkScore = Math.max(...stops.map((s) => s.walkScore));
+  const avgMiles = stops.reduce((sum, s) => sum + s.miles, 0) / stops.length;
+  return maxWalkScore >= 9 || avgMiles > 15;
+}
+
+export interface AdaptivePlanResult {
+  stops: DayStop[];
+  /** What the caller (user or AI) asked for. */
+  requestedDays: number;
+  /** What we actually produced — equal to requestedDays unless we stretched. */
+  actualDays: number;
+}
+
+/** Difficulty-aware autoStops. Always returns at least `requestedDays` days,
+ * but may return more if the requested count would produce a punishing plan.
+ * Hard cap at MAX_DAYS to avoid runaway growth on malformed input. */
+export function autoStopsAdaptive(
+  requestedDays: number,
+  direction: "north_to_south" | "south_to_north",
+  listingsPerVillage?: Record<string, number>,
+  opts: { maxDays?: number } = {},
+): AdaptivePlanResult {
+  const MAX_DAYS = opts.maxDays ?? 14;
+  let days = Math.max(3, Math.min(requestedDays, MAX_DAYS));
+  let stops = autoStops(days, direction, listingsPerVillage);
+
+  while (days < MAX_DAYS && isPlanUnreasonable(stops)) {
+    days += 1;
+    stops = autoStops(days, direction, listingsPerVillage);
+  }
+
+  return { stops, requestedDays, actualDays: days };
 }
 
 export function computeConnections(stops: DayStop[], direction: "north_to_south" | "south_to_north", scalar: number = 1): Connection[] {
