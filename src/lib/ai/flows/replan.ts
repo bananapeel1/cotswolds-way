@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ai } from "../genkit";
+import { ai, generate } from "../genkit";
 import {
   ReplanMutationSchema,
   type ReplanMutation,
@@ -150,7 +150,7 @@ Decide the single mutation. Return the structured output.`;
       config: { temperature: 0.2 },
     };
 
-    const result = await ai.generate(baseRequest);
+    const result = await generate(baseRequest);
     const output = result.output;
     if (!output) {
       throw new Error("replan: model returned no structured output");

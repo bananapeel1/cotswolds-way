@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ai } from "../genkit";
+import { ai, generate } from "../genkit";
 import { TripBriefSchema, type TripBrief } from "../schemas/trip-brief";
 import {
   CANONICAL_VILLAGES,
@@ -97,7 +97,7 @@ export const extractBriefFlow = ai.defineFlow(
       config: { temperature: 0.2 },
     };
 
-    const result = await ai.generate(baseRequest);
+    const result = await generate(baseRequest);
     if (!result.output) {
       throw new Error("extractBrief: model returned no structured output");
     }
@@ -107,7 +107,7 @@ export const extractBriefFlow = ai.defineFlow(
 
     // One-shot retry when the model invented village names.
     if (notes.length > 0) {
-      const retry = await ai.generate({
+      const retry = await generate({
         ...baseRequest,
         prompt: `${baseRequest.prompt}\n\n${RETRY_GUIDANCE(notes)}`,
       });
