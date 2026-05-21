@@ -9,10 +9,10 @@ import { usePace } from "@/contexts/PaceContext";
 /** Map the AI-extracted fitness enum to our pace archetype. */
 function fitnessToArchetype(fitness: TripBrief["fitness"]): Archetype {
   switch (fitness) {
-    case "relaxed": return "gentle";
-    case "moderate": return "moderate";
-    case "fit": return "fit";
-    case "very-fit": return "strong";
+    case "relaxed": return "casual";
+    case "moderate": return "steady";
+    case "fit": return "strong";
+    case "very-fit": return "athletic";
   }
 }
 
@@ -262,23 +262,19 @@ export default function AIPlanComposer() {
 
         {result && (
           <>
-            <BriefSummary brief={result.brief} validationNotes={result.validationNotes} />
+            <BriefSummary
+              brief={result.brief}
+              validationNotes={result.validationNotes}
+              saveAsDefault={saveAsDefault}
+              onSaveAsDefaultChange={setSaveAsDefault}
+            />
             <PlanCards plan={result.planState} />
             <RationalePanel
               narration={narration}
               loading={narrateLoading}
               rationale={result.rationale}
             />
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <label className="flex items-center gap-2 text-[12px] text-stone cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={saveAsDefault}
-                  onChange={(e) => setSaveAsDefault(e.target.checked)}
-                  className="accent-forest"
-                />
-                Save <span className="font-semibold text-forest-deep">{fitnessToArchetype(result.brief.fitness)}</span> pace as my default
-              </label>
+            <div className="flex items-center justify-end">
               <button
                 onClick={openInPlanner}
                 className="px-6 py-3 rounded-full bg-tertiary text-white text-[13px] font-semibold hover:bg-terracotta transition-colors"
@@ -293,11 +289,21 @@ export default function AIPlanComposer() {
   );
 }
 
-function BriefSummary({ brief, validationNotes }: { brief: TripBrief; validationNotes: string[] }) {
+function BriefSummary({
+  brief,
+  validationNotes,
+  saveAsDefault,
+  onSaveAsDefaultChange,
+}: {
+  brief: TripBrief;
+  validationNotes: string[];
+  saveAsDefault: boolean;
+  onSaveAsDefaultChange: (next: boolean) => void;
+}) {
+  const archetype = fitnessToArchetype(brief.fitness);
   const chips: string[] = [];
   if (brief.days) chips.push(`${brief.days} days`);
   chips.push(brief.direction === "south_to_north" ? "S → N" : "N → S");
-  chips.push(`fitness: ${brief.fitness}`);
   if (brief.budgetTier) chips.push(brief.budgetTier);
   if (brief.dogFriendly) chips.push("dog friendly");
   if (brief.diningPreference !== "any") chips.push(brief.diningPreference);
@@ -306,12 +312,26 @@ function BriefSummary({ brief, validationNotes }: { brief: TripBrief; validation
   return (
     <div className="bg-cream/60 rounded-[20px] p-4">
       <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-2">What I heard</div>
-      <div className="flex flex-wrap gap-1.5 mb-2">
+      <div className="flex flex-wrap gap-1.5 mb-2.5">
         {chips.map((c) => (
           <span key={c} className="text-[11px] bg-white/80 text-forest-deep rounded-full px-2.5 py-1">
             {c}
           </span>
         ))}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap rounded-xl bg-white/70 px-3 py-2 mb-2">
+        <span className="text-[11px] uppercase tracking-wider text-stone">Pace</span>
+        <span className="text-[12px] font-semibold text-forest-deep capitalize">{archetype}</span>
+        <span className="text-[11px] text-stone-light">(used for this plan)</span>
+        <label className="ml-auto flex items-center gap-1.5 text-[12px] text-stone cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={saveAsDefault}
+            onChange={(e) => onSaveAsDefaultChange(e.target.checked)}
+            className="accent-forest"
+          />
+          Save as my default
+        </label>
       </div>
       {brief.ambiguities.length > 0 && (
         <details className="text-[12px] text-stone mt-2">

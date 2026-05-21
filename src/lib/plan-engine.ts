@@ -79,19 +79,19 @@ export interface Connection {
 }
 
 /** Walking-style archetype — drives a multiplier on Tobler-predicted walking
- * times. See ARCHETYPE_SCALAR. Independent of physical day difficulty: a fit
- * walker still finds 22mi/2000ft strenuous, they just do it faster. */
-export type Archetype = "gentle" | "moderate" | "fit" | "strong";
+ * times. See ARCHETYPE_SCALAR. Independent of physical day difficulty: a
+ * strong walker still finds 22mi/2000ft strenuous, they just do it faster. */
+export type Archetype = "casual" | "steady" | "strong" | "athletic";
 
 /** Pack weight bucket — small additional multiplier on top of archetype. */
 export type Pack = "day" | "overnight" | "full";
 
 /** Time multipliers vs Tobler-predicted hours. >1 means slower. */
 export const ARCHETYPE_SCALAR: Record<Archetype, number> = {
-  gentle: 1.25,
-  moderate: 1.10,
-  fit: 0.95,
-  strong: 0.80,
+  casual: 1.25,
+  steady: 1.10,
+  strong: 0.95,
+  athletic: 0.80,
 };
 
 export const PACK_SCALAR: Record<Pack, number> = {

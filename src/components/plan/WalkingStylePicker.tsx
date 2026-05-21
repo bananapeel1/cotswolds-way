@@ -4,21 +4,21 @@ import { usePace } from "@/contexts/PaceContext";
 import type { Archetype, Pack } from "@/lib/plan-engine";
 
 const ARCHETYPES: { value: Archetype; label: string; desc: string; icon: string }[] = [
-  { value: "gentle", label: "Gentle", desc: "Flat trails, day walks", icon: "🐌" },
-  { value: "moderate", label: "Moderate", desc: "Hilly weekenders are fine", icon: "🚶" },
-  { value: "fit", label: "Fit", desc: "Multi-day, packs, elevation", icon: "🥾" },
-  { value: "strong", label: "Strong", desc: "Long days, light feet", icon: "🏔️" },
+  { value: "casual", label: "Casual", desc: "Day walks, gentler trails", icon: "🌿" },
+  { value: "steady", label: "Steady", desc: "Hilly weekenders are fine", icon: "🚶" },
+  { value: "strong", label: "Strong", desc: "Multi-day, packs, elevation", icon: "🥾" },
+  { value: "athletic", label: "Athletic", desc: "Long days, light feet", icon: "🏔️" },
 ];
 
 const PACKS: { value: Pack; label: string }[] = [
-  { value: "day", label: "Daypack" },
-  { value: "overnight", label: "Overnight" },
-  { value: "full", label: "Full kit" },
+  { value: "day", label: "Light < 5kg" },
+  { value: "overnight", label: "Overnight 5–10kg" },
+  { value: "full", label: "Multi-day 10kg+" },
 ];
 
 export default function WalkingStylePicker() {
   const { archetype, pack, setArchetype, setPack } = usePace();
-  const selected = archetype ?? "moderate";
+  const selected: Archetype = archetype ?? "steady";
 
   return (
     <div>

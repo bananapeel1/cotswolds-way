@@ -82,7 +82,7 @@ export default function TripPlanner() {
 
   const stops = plan.stops;
   // Per-plan override (set by the AI handoff) wins over the global preference.
-  const effectiveArchetype = plan.paceOverride ?? globalArchetype ?? "moderate";
+  const effectiveArchetype = plan.paceOverride ?? globalArchetype ?? "steady";
   const paceScalar = ARCHETYPE_SCALAR[effectiveArchetype] * PACK_SCALAR[pack];
   const connections = useMemo(
     () => stops.length > 0 ? computeConnections(stops, plan.direction, paceScalar) : [],
@@ -476,6 +476,46 @@ export default function TripPlanner() {
               <span className="text-xs text-stone-light">Highest: Cleeve Common {formatElevationM(307)}</span>
             </div>
             <ElevationProfile stops={stops} direction={plan.direction} highlightDays={highlightDays} />
+          </div>
+
+          {/* Per-plan pace override — affects leave-by times below */}
+          <div className="bg-white rounded-[20px] px-4 py-3 shadow-[0_1px_3px_rgba(30,63,43,0.06)] flex flex-wrap items-center gap-2.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-stone">Pace for this trip</span>
+            <div className="inline-flex rounded-full bg-cream/70 p-0.5">
+              {(["casual", "steady", "strong", "athletic"] as const).map((a) => {
+                const isSelected = effectiveArchetype === a;
+                const labels: Record<typeof a, string> = {
+                  casual: "Casual",
+                  steady: "Steady",
+                  strong: "Strong",
+                  athletic: "Athletic",
+                };
+                return (
+                  <button
+                    key={a}
+                    onClick={() => updatePlan({ paceOverride: a })}
+                    className={`px-3 py-1.5 rounded-full text-[12px] font-medium transition-colors ${
+                      isSelected
+                        ? "bg-white text-forest-deep shadow-[0_1px_3px_rgba(45,90,61,0.12)]"
+                        : "text-stone hover:text-forest"
+                    }`}
+                  >
+                    {labels[a]}
+                  </button>
+                );
+              })}
+            </div>
+            {plan.paceOverride ? (
+              <button
+                onClick={() => updatePlan({ paceOverride: undefined })}
+                className="text-[11px] text-tertiary hover:text-terracotta underline-offset-2 hover:underline"
+                title={`Revert to your default (${globalArchetype ?? "steady"})`}
+              >
+                trip override · revert
+              </button>
+            ) : (
+              <span className="text-[11px] text-stone-light">your default</span>
+            )}
           </div>
 
           {/* Day cards */}

@@ -29,12 +29,15 @@ interface PaceContextValue {
   setPack: (p: Pack) => void;
 }
 
-const STORAGE_KEY_ARCHETYPE = "cotswold-pace-archetype";
+// v2: archetype enum renamed in 2026-05 (gentle→casual etc.); bumping the
+// key means stale localStorage values from v1 are silently ignored rather
+// than mis-mapped.
+const STORAGE_KEY_ARCHETYPE = "cotswold-pace-archetype-v2";
 const STORAGE_KEY_PACK = "cotswold-pace-pack";
 
 const PaceContext = createContext<PaceContextValue | null>(null);
 
-const ARCHETYPES = new Set<Archetype>(["gentle", "moderate", "fit", "strong"]);
+const ARCHETYPES = new Set<Archetype>(["casual", "steady", "strong", "athletic"]);
 const PACKS = new Set<Pack>(["day", "overnight", "full"]);
 
 export function PaceProvider({ children }: { children: ReactNode }) {
@@ -61,7 +64,7 @@ export function PaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<PaceContextValue>(() => {
-    const effective = archetype ?? "moderate";
+    const effective: Archetype = archetype ?? "steady";
     return {
       archetype,
       pack,
