@@ -44,6 +44,11 @@ export interface PlannedAccommodation {
   village: string;
   propertyType: string;  // "hotel" | "inn" | "bnb" etc.
   image?: string;        // thumbnail URL
+  websiteUrl?: string | null;     // populated when the property has a bookable
+                                  // website — drives the "Book direct" CTA
+  relaxedConstraints?: string[];  // brief filters that had to be relaxed for a
+                                  // match (e.g. ["dog-friendly"]) — UI surfaces
+                                  // a "confirm with host" hint
 }
 
 export interface SavedPOI {
@@ -1080,7 +1085,15 @@ export function scoreProperty(p: Property, brief: TripBrief, tier: BudgetTier): 
   }
 
   let amenity = 0;
-  if (brief.dogFriendly && p.is_dog_friendly) amenity += 0.5;
+  // Dog-friendly is a soft preference, not a hard filter. Brief asks for dog?
+  // Reward dog-flagged listings; penalise others heavily but don't exclude
+  // (heuristic: typical totals sit 1.0–2.5, so -2.0 sends non-dog options to
+  // the back of the queue without dropping them entirely). The selector
+  // surfaces a confirm-with-host hint when a non-dog property wins anyway.
+  if (brief.dogFriendly) {
+    if (p.is_dog_friendly) amenity += 0.5;
+    else amenity -= 2.0;
+  }
   if (brief.diningPreference === "pub-nightly" && p.property_type === "inn") amenity += 0.2;
   if (p.has_luggage_transfer) amenity += 0.1;
 
@@ -1096,31 +1109,28 @@ export interface AccommodationSelection {
   relaxedToTier?: BudgetTier;
   /** Stable token a prompt can map to prose. */
   reason?: string;
+  /** Brief constraints that had to be relaxed for a match (e.g.
+   * ["dog-friendly"]). UI surfaces these as confirm-with-host warnings. */
+  relaxedConstraints?: string[];
 }
 
 /** Pick the best property in `village` for the brief and tier. Falls back
  * through adjacent tiers when the requested tier is empty, then to any
  * candidate if nothing matches at all. Returns null only when the village has
- * no candidates after hard filters (dog-friendly). */
+ * zero properties — dog-friendly is a heavy preference, not a hard filter, so
+ * a non-dog property can still win and the selector flags
+ * `relaxedConstraints: ["dog-friendly"]` so the UI can warn. */
 export function selectAccommodation(
   village: string,
   brief: TripBrief,
   tier: BudgetTier,
   properties: readonly Property[],
 ): AccommodationSelection {
-  const inVillage = properties.filter(
+  const candidates = properties.filter(
     (p) => p.village.toLowerCase() === village.toLowerCase(),
   );
-  if (inVillage.length === 0) {
+  if (candidates.length === 0) {
     return { property: null, reason: "no-properties-in-village" };
-  }
-
-  let candidates = inVillage;
-  if (brief.dogFriendly) {
-    candidates = candidates.filter((p) => p.is_dog_friendly);
-    if (candidates.length === 0) {
-      return { property: null, reason: "no-dog-friendly-properties" };
-    }
   }
 
   const tryTier = (t: BudgetTier): Property | null => {
@@ -1131,12 +1141,20 @@ export function selectAccommodation(
     );
   };
 
+  /** Annotate a chosen property with any constraints the brief asked for that
+   * the selection didn't satisfy. Lets the UI surface honest warnings. */
+  const annotate = (property: Property, base: AccommodationSelection): AccommodationSelection => {
+    const relaxed: string[] = [];
+    if (brief.dogFriendly && !property.is_dog_friendly) relaxed.push("dog-friendly");
+    return relaxed.length ? { ...base, relaxedConstraints: relaxed } : base;
+  };
+
   const primary = tryTier(tier);
-  if (primary) return { property: primary };
+  if (primary) return annotate(primary, { property: primary });
 
   for (const fallback of TIER_FALLBACKS[tier]) {
     const alt = tryTier(fallback);
-    if (alt) return { property: alt, relaxedToTier: fallback, reason: `no-${tier}-here` };
+    if (alt) return annotate(alt, { property: alt, relaxedToTier: fallback, reason: `no-${tier}-here` });
   }
 
   // Last resort — any candidate. Useful when property_types in a village
@@ -1144,7 +1162,7 @@ export function selectAccommodation(
   const any = candidates.reduce((best, p) =>
     scoreProperty(p, brief, tier) > scoreProperty(best, brief, tier) ? p : best,
   );
-  return { property: any, reason: "best-effort-fallback" };
+  return annotate(any, { property: any, reason: "best-effort-fallback" });
 }
 
 /** Attach accommodations to a stops array using the brief. Emits rationale
@@ -1192,6 +1210,17 @@ export function applyBriefToStops(
       });
     }
 
+    if (result.relaxedConstraints?.length) {
+      events.push({
+        kind: "constraint-relaxed",
+        day: stop.day,
+        village: stop.village,
+        propertySlug: result.property.slug,
+        reason: `relaxed-${result.relaxedConstraints.join("-")}`,
+        detail: { relaxedConstraints: result.relaxedConstraints.join(",") },
+      });
+    }
+
     const next: DayStop = {
       ...stop,
       accommodation: {
@@ -1200,6 +1229,8 @@ export function applyBriefToStops(
         village: result.property.village,
         propertyType: result.property.property_type,
         image: result.property.image_url ?? undefined,
+        websiteUrl: result.property.website_url,
+        relaxedConstraints: result.relaxedConstraints,
       },
     };
     return next;

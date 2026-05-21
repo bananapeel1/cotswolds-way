@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Archetype, PlanState, DayStop } from "@/lib/plan-engine";
 import type { TripBrief, PlanRationale } from "@/lib/ai/schemas/trip-brief";
 import { usePace } from "@/contexts/PaceContext";
+import { trackOutboundClick } from "@/lib/track";
 
 /** Map the AI-extracted fitness enum to our pace archetype. */
 function fitnessToArchetype(fitness: TripBrief["fitness"]): Archetype {
@@ -376,6 +377,8 @@ const DIFF_BG: Record<DayStop["difficulty"], string> = {
 };
 
 function DayRow({ stop }: { stop: DayStop }) {
+  const acc = stop.accommodation;
+  const notDogFriendly = acc?.relaxedConstraints?.includes("dog-friendly");
   return (
     <li className="px-4 py-3 flex items-start gap-3">
       <div className="flex-shrink-0 w-9 h-9 rounded-full bg-forest text-white text-[12px] font-semibold flex items-center justify-center">
@@ -390,16 +393,39 @@ function DayRow({ stop }: { stop: DayStop }) {
           </span>
           <span className="text-[11px] text-stone-light">score {stop.walkScore}/10</span>
         </div>
-        <div className="text-[12px] text-stone mt-0.5 truncate">
-          {stop.accommodation ? (
-            <>
-              <span className="text-forest font-medium">{stop.accommodation.name}</span>{" "}
-              <span className="text-stone-light">({stop.accommodation.propertyType})</span>
-            </>
-          ) : (
-            <span className="text-amber-warm">No stay picked yet</span>
-          )}
-        </div>
+        {acc ? (
+          <div className="text-[12px] text-stone mt-0.5">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="text-forest font-medium truncate">{acc.name}</span>
+              <span className="text-stone-light">({acc.propertyType})</span>
+              {acc.websiteUrl && (
+                <a
+                  href={acc.websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() =>
+                    trackOutboundClick({
+                      source: "ai_plan",
+                      target: acc.websiteUrl!,
+                      label: acc.name,
+                      meta: { slug: acc.slug, day: stop.day, village: stop.village },
+                    })
+                  }
+                  className="text-[11px] font-semibold text-forest hover:underline whitespace-nowrap"
+                >
+                  Book direct ↗
+                </a>
+              )}
+            </div>
+            {notDogFriendly && (
+              <p className="text-[11px] text-amber-warm mt-0.5">
+                Best match — not flagged as dog-friendly. Confirm with the host before booking.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="text-[12px] text-amber-warm mt-0.5">No stay picked yet</div>
+        )}
       </div>
     </li>
   );

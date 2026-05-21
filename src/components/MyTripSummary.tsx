@@ -10,6 +10,7 @@ import {
   type PlanState,
 } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
+import { trackOutboundClick } from "@/lib/track";
 import propertiesRaw from "@/data/properties.json";
 
 interface PropertyLite {
@@ -221,18 +222,44 @@ export default function MyTripSummary() {
               <div className="space-y-2.5">
                 {/* Accommodation */}
                 {stop.accommodation ? (
-                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-primary/5 border border-primary/10">
-                    {stop.accommodation.image && (
-                      <img src={stop.accommodation.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 print:hidden" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>bed</span>
-                        <span className="text-[9px] font-bold text-primary uppercase">Stay</span>
+                  <div className="p-2.5 rounded-xl bg-primary/5 border border-primary/10">
+                    <div className="flex items-center gap-3">
+                      {stop.accommodation.image && (
+                        <img src={stop.accommodation.image} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 print:hidden" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>bed</span>
+                          <span className="text-[9px] font-bold text-primary uppercase">Stay</span>
+                        </div>
+                        <p className="text-sm font-bold text-primary truncate">{stop.accommodation.name}</p>
+                        <p className="text-[10px] text-secondary capitalize">{stop.accommodation.propertyType} · {stop.accommodation.village}</p>
                       </div>
-                      <p className="text-sm font-bold text-primary truncate">{stop.accommodation.name}</p>
-                      <p className="text-[10px] text-secondary capitalize">{stop.accommodation.propertyType} · {stop.accommodation.village}</p>
+                      {stop.accommodation.websiteUrl && (
+                        <a
+                          href={stop.accommodation.websiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() =>
+                            trackOutboundClick({
+                              source: "ai_plan",
+                              target: stop.accommodation!.websiteUrl!,
+                              label: stop.accommodation!.name,
+                              meta: { slug: stop.accommodation!.slug, day: stop.day, village: stop.village },
+                            })
+                          }
+                          className="shrink-0 text-[10px] font-bold text-primary hover:underline whitespace-nowrap print:hidden"
+                        >
+                          Book direct ↗
+                        </a>
+                      )}
                     </div>
+                    {stop.accommodation.relaxedConstraints?.includes("dog-friendly") && (
+                      <p className="mt-1.5 text-[10px] text-amber-700 flex items-start gap-1 print:hidden">
+                        <span className="material-symbols-outlined text-xs leading-tight">info</span>
+                        <span>Best match — not flagged as dog-friendly. Confirm with the host before booking.</span>
+                      </p>
+                    )}
                   </div>
                 ) : i < stops.length - 1 && !stop.restDay ? (
                   <div className="flex items-center gap-2 p-2.5 rounded-xl border border-dashed border-outline-variant/30 print:hidden">
