@@ -8,6 +8,13 @@
  * Regenerate with `node scripts/build-trail-data.mjs`.
  */
 import trailData from "@/data/trail-accurate.json";
+import type {
+  BudgetTier,
+  PlanRationale,
+  RationaleEvent,
+  TripBrief,
+} from "@/lib/ai/schemas/trip-brief";
+import type { Property } from "@/lib/queries";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -661,12 +668,36 @@ export function computeConnections(stops: DayStop[], direction: "north_to_south"
   return connections;
 }
 
-export function estimateCosts(nights: number): CostBreakdown {
-  const perNight = 95; // B&B average
+/** Indicative nightly accommodation cost per tier — used when properties don't
+ * have real prices populated yet. All `price_per_night` are currently 0 in
+ * properties.json, so this is the only signal we have. */
+const TIER_DEFAULT_NIGHTLY: Record<BudgetTier, number> = {
+  shoestring: 60,
+  comfort: 110,
+  "treat-yourself": 180,
+};
+
+const TIER_LUNCH: Record<BudgetTier, number> = {
+  shoestring: 10,
+  comfort: 15,
+  "treat-yourself": 25,
+};
+
+const TIER_DINNER: Record<BudgetTier, number> = {
+  shoestring: 20,
+  comfort: 30,
+  "treat-yourself": 55,
+};
+
+export function estimateCosts(
+  nights: number,
+  tier: BudgetTier = "comfort",
+): CostBreakdown {
+  const perNight = TIER_DEFAULT_NIGHTLY[tier];
   const accommodation = nights * perNight;
   const luggage = nights * 12;
-  const lunches = (nights + 1) * 15; // one more day than nights
-  const dinners = nights * 25;
+  const lunches = (nights + 1) * TIER_LUNCH[tier];
+  const dinners = nights * TIER_DINNER[tier];
 
   return {
     accommodation, luggage, lunches, dinners, perNight,
@@ -935,4 +966,233 @@ export function markTransfer(
     const difficulty = DIFFICULTY_MAP[s.village] || "moderate";
     return { ...s, transfer: false, walkScore: computeWalkScore(s.miles, elevationFt, difficulty) };
   });
+}
+
+// ─── AI brief → plan glue ───────────────────────────────────────────────────
+// These extensions turn a TripBrief (extracted by the LLM) into a fully-formed
+// PlanState by reusing autoStops() for the village sequence and adding a
+// scoring layer for accommodation selection. Soft constraints are scored, not
+// filtered, so the planner degrades gracefully. Hard constraints (mustVisit,
+// avoidVillages) surface as rationale events when violated.
+
+/** Property types eligible for each tier. Bnb appears in both shoestring and
+ * comfort because the dataset doesn't separate budget B&Bs from mid-range. */
+const TIER_TYPES: Record<BudgetTier, ReadonlySet<string>> = {
+  shoestring: new Set(["hostel", "bnb"]),
+  comfort: new Set(["bnb", "inn", "guesthouse"]),
+  "treat-yourself": new Set(["hotel", "cottage", "glamping"]),
+};
+
+/** Order to try when the requested tier has no matches in a village. */
+const TIER_FALLBACKS: Record<BudgetTier, BudgetTier[]> = {
+  shoestring: ["comfort", "treat-yourself"],
+  comfort: ["treat-yourself", "shoestring"],
+  "treat-yourself": ["comfort", "shoestring"],
+};
+
+/** Score a property's fit against a brief, given a budget tier. Higher is
+ * better. Tier match is the largest signal; vibe and amenity bonuses break
+ * ties; rating is a small tiebreaker. */
+export function scoreProperty(p: Property, brief: TripBrief, tier: BudgetTier): number {
+  const tierBase = TIER_TYPES[tier].has(p.property_type) ? 1.0 : 0;
+
+  let vibe = 0;
+  for (const v of brief.propertyVibes) {
+    switch (v) {
+      case "character-led":
+        if (["bnb", "inn", "cottage"].includes(p.property_type)) vibe += 0.3;
+        break;
+      case "pub-with-rooms":
+        if (p.property_type === "inn") vibe += 0.4;
+        break;
+      case "boutique":
+        if (p.property_type === "hotel" && (p.rating ?? 0) >= 4.5) vibe += 0.3;
+        break;
+      case "rural-quiet":
+        if (p.trail_distance_miles <= 0.5 && ["bnb", "cottage"].includes(p.property_type)) vibe += 0.3;
+        break;
+      case "town-centre":
+        if (["hotel", "inn"].includes(p.property_type) && p.trail_distance_miles <= 0.3) vibe += 0.2;
+        break;
+    }
+  }
+
+  let amenity = 0;
+  if (brief.dogFriendly && p.is_dog_friendly) amenity += 0.5;
+  if (brief.diningPreference === "pub-nightly" && p.property_type === "inn") amenity += 0.2;
+  if (p.has_luggage_transfer) amenity += 0.1;
+
+  // Rating up to +0.5
+  const rating = (p.rating ?? 3.5) / 10;
+
+  return tierBase + vibe + amenity + rating;
+}
+
+export interface AccommodationSelection {
+  property: Property | null;
+  /** Set when the requested tier had no matches and we fell back. */
+  relaxedToTier?: BudgetTier;
+  /** Stable token a prompt can map to prose. */
+  reason?: string;
+}
+
+/** Pick the best property in `village` for the brief and tier. Falls back
+ * through adjacent tiers when the requested tier is empty, then to any
+ * candidate if nothing matches at all. Returns null only when the village has
+ * no candidates after hard filters (dog-friendly). */
+export function selectAccommodation(
+  village: string,
+  brief: TripBrief,
+  tier: BudgetTier,
+  properties: readonly Property[],
+): AccommodationSelection {
+  const inVillage = properties.filter(
+    (p) => p.village.toLowerCase() === village.toLowerCase(),
+  );
+  if (inVillage.length === 0) {
+    return { property: null, reason: "no-properties-in-village" };
+  }
+
+  let candidates = inVillage;
+  if (brief.dogFriendly) {
+    candidates = candidates.filter((p) => p.is_dog_friendly);
+    if (candidates.length === 0) {
+      return { property: null, reason: "no-dog-friendly-properties" };
+    }
+  }
+
+  const tryTier = (t: BudgetTier): Property | null => {
+    const inTier = candidates.filter((p) => TIER_TYPES[t].has(p.property_type));
+    if (inTier.length === 0) return null;
+    return inTier.reduce((best, p) =>
+      scoreProperty(p, brief, t) > scoreProperty(best, brief, t) ? p : best,
+    );
+  };
+
+  const primary = tryTier(tier);
+  if (primary) return { property: primary };
+
+  for (const fallback of TIER_FALLBACKS[tier]) {
+    const alt = tryTier(fallback);
+    if (alt) return { property: alt, relaxedToTier: fallback, reason: `no-${tier}-here` };
+  }
+
+  // Last resort — any candidate. Useful when property_types in a village
+  // don't map cleanly to any tier (e.g. glamping-only villages with budget brief).
+  const any = candidates.reduce((best, p) =>
+    scoreProperty(p, brief, tier) > scoreProperty(best, brief, tier) ? p : best,
+  );
+  return { property: any, reason: "best-effort-fallback" };
+}
+
+/** Attach accommodations to a stops array using the brief. Emits rationale
+ * events the narration prompt can turn into prose. Does NOT modify stop count,
+ * mileage, or difficulty — those are autoStops's responsibility. */
+export function applyBriefToStops(
+  stops: DayStop[],
+  brief: TripBrief,
+  properties: readonly Property[],
+): { stops: DayStop[]; rationale: PlanRationale } {
+  const events: RationaleEvent[] = [];
+  const unmet: string[] = [];
+  const tier: BudgetTier = brief.budgetTier ?? "comfort";
+
+  const enriched = stops.map((stop) => {
+    if (stop.restDay || stop.transfer) return stop;
+
+    const result = selectAccommodation(stop.village, brief, tier, properties);
+    if (!result.property) {
+      events.push({
+        kind: "property-rejected",
+        day: stop.day,
+        village: stop.village,
+        reason: result.reason ?? "no-match",
+      });
+      return stop;
+    }
+
+    if (result.relaxedToTier) {
+      events.push({
+        kind: "constraint-relaxed",
+        day: stop.day,
+        village: stop.village,
+        propertySlug: result.property.slug,
+        reason: result.reason ?? `relaxed-to-${result.relaxedToTier}`,
+        detail: { requestedTier: tier, actualTier: result.relaxedToTier },
+      });
+    } else {
+      events.push({
+        kind: "property-chosen",
+        day: stop.day,
+        village: stop.village,
+        propertySlug: result.property.slug,
+        reason: "best-match",
+      });
+    }
+
+    const next: DayStop = {
+      ...stop,
+      accommodation: {
+        slug: result.property.slug,
+        name: result.property.name,
+        village: result.property.village,
+        propertyType: result.property.property_type,
+        image: result.property.image_url ?? undefined,
+      },
+    };
+    return next;
+  });
+
+  // Honour deal-breakers
+  for (const mv of brief.mustVisit) {
+    const present = enriched.some((s) => s.village.toLowerCase() === mv.toLowerCase());
+    if (!present) {
+      unmet.push(`mustVisit:${mv}`);
+      events.push({
+        kind: "deal-breaker-violation",
+        village: mv,
+        reason: "must-visit-not-in-stops",
+      });
+    }
+  }
+  for (const av of brief.avoidVillages) {
+    const hit = enriched.find((s) => s.village.toLowerCase() === av.toLowerCase());
+    if (hit) {
+      unmet.push(`avoidVillages:${av}`);
+      events.push({
+        kind: "deal-breaker-violation",
+        day: hit.day,
+        village: av,
+        reason: "avoid-village-included",
+      });
+    }
+  }
+
+  return {
+    stops: enriched,
+    rationale: {
+      briefSummary: {
+        days: brief.days ?? stops.length,
+        direction: brief.direction ?? "north_to_south",
+        fitness: brief.fitness,
+        budgetTier: tier,
+        dogFriendly: brief.dogFriendly,
+        propertyVibes: brief.propertyVibes,
+        diningPreference: brief.diningPreference,
+      },
+      events,
+      unmet,
+    },
+  };
+}
+
+/** Map a fitness level to a sensible default day count when the brief doesn't
+ * specify days. Explicit `brief.days` always wins. */
+export function daysFromFitness(fitness: TripBrief["fitness"]): number {
+  switch (fitness) {
+    case "relaxed": return 11;
+    case "moderate": return 9;
+    case "fit": return 7;
+    case "very-fit": return 5;
+  }
 }

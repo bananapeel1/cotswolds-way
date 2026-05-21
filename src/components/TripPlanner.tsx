@@ -25,6 +25,8 @@ import DayAmenities from "@/components/plan/DayAmenities";
 import AccommodationPicker from "@/components/plan/AccommodationPicker";
 import PlansLibrary from "@/components/plan/PlansLibrary";
 import PlanWarnings from "@/components/plan/PlanWarnings";
+import BudgetTierCompare from "@/components/ai/BudgetTierCompare";
+import ReplanChatPanel from "@/components/ai/ReplanChatPanel";
 import { useUnits } from "@/contexts/UnitContext";
 
 interface POI {
@@ -184,6 +186,23 @@ export default function TripPlanner() {
       ═══════════════════════════════════════════════════════════════════════ */}
       {step === 1 && (
         <div className="animate-step-in space-y-9 pt-4">
+
+          {/* AI entry point */}
+          <Link
+            href="/plan/ai"
+            className="group flex items-center gap-3 rounded-[20px] border border-tertiary/25 bg-gradient-to-br from-tertiary/4 to-transparent px-5 py-4 hover:border-tertiary/50 transition-colors"
+          >
+            <span className="material-symbols-outlined text-tertiary text-xl">auto_awesome</span>
+            <div className="flex-1">
+              <div className="text-[14px] font-semibold text-ink leading-tight">
+                Describe your walk instead
+              </div>
+              <div className="text-[12px] text-stone leading-tight mt-0.5">
+                Tell our AI what you want in a sentence. It picks the stops and stays for you.
+              </div>
+            </div>
+            <span className="text-tertiary text-sm group-hover:translate-x-1 transition-transform">→</span>
+          </Link>
 
           {/* Direction */}
           <div>
@@ -605,6 +624,9 @@ export default function TripPlanner() {
             }}
           />
 
+          {/* AI replan panel */}
+          <ReplanChatPanel plan={plan} onUpdatePlan={updatePlan} />
+
           {/* Budget accordion */}
           <div className="bg-white rounded-[20px] shadow-[0_1px_3px_rgba(30,63,43,0.06)] overflow-hidden">
             <button onClick={() => setBudgetOpen(!budgetOpen)}
@@ -616,8 +638,14 @@ export default function TripPlanner() {
               </svg>
             </button>
             {budgetOpen && (
-              <div className="px-6 pb-5 animate-slide-up-fade">
+              <div className="px-6 pb-5 animate-slide-up-fade space-y-4">
                 <CostEstimator days={plan.days} />
+                <BudgetTierCompare
+                  plan={plan}
+                  onApplyTier={(byDay) => {
+                    byDay.forEach((accom, day) => setAccommodation(day, accom));
+                  }}
+                />
               </div>
             )}
           </div>
