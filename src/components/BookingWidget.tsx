@@ -1,5 +1,7 @@
 "use client";
 
+import { trackOutboundClick } from "@/lib/track";
+
 interface BookingWidgetProps {
   slug: string;
   bookingHotelId: string | null;
@@ -13,11 +15,17 @@ interface BookingWidgetProps {
 }
 
 export default function BookingWidget({
+  slug,
   websiteUrl,
+  propertyName,
   hasTaxiService,
   hostName,
   hostDescription,
 }: BookingWidgetProps) {
+  const source: "ai_plan" | "property" =
+    typeof window !== "undefined" && document.referrer.includes("/plan")
+      ? "ai_plan"
+      : "property";
   return (
     <div className="sticky top-32">
       <div className="bg-white rounded-2xl shadow-[0_24px_48px_-12px_rgba(28,28,25,0.1)] p-8 border border-outline-variant/20">
@@ -34,6 +42,14 @@ export default function BookingWidget({
             href={websiteUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() =>
+              trackOutboundClick({
+                source,
+                target: websiteUrl,
+                label: propertyName,
+                meta: { slug },
+              })
+            }
             className="block w-full bg-primary text-white py-4 rounded-full font-bold text-lg hover:bg-primary-container active:scale-[0.98] transition-all mb-3 text-center"
           >
             Check Availability

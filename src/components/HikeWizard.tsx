@@ -2,6 +2,10 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import propertiesData from "@/data/properties.json";
+import { countListingsByVillage } from "@/lib/plan-engine";
+
+const LISTINGS_PER_VILLAGE = countListingsByVillage(propertiesData as Array<{ village: string }>);
 
 // Overnight stop villages (N→S), mile markers from Chipping Campden
 const VILLAGES_NTS = [
@@ -56,15 +60,16 @@ interface DayStop {
   difficulty: string;
 }
 
-function autoStops(days: number, direction: Direction): DayStop[] {
-  const villages =
-    direction === "north_to_south"
-      ? VILLAGES_NTS
-      : [...VILLAGES_NTS]
-          .reverse()
-          .map((v, i, arr) => ({ ...v, mile: arr[0].mile === 102 ? 102 - (VILLAGES_NTS[VILLAGES_NTS.length - 1 - i].mile) : v.mile }))
-          .map((v, i) => ({ name: VILLAGES_NTS[VILLAGES_NTS.length - 1 - i].name, mile: 102 - VILLAGES_NTS[VILLAGES_NTS.length - 1 - i].mile }));
+// Soft penalty mirrors plan-engine.ts listingPenalty: prefer villages with
+// real inventory, but don't exclude empty ones — they can still win if the
+// alternative is meaningfully further from the day's mile target.
+function listingPenaltyMiles(count: number): number {
+  if (count >= 2) return 0;
+  if (count === 1) return 5;
+  return 15;
+}
 
+function autoStops(days: number, direction: Direction): DayStop[] {
   const totalMiles = 102.0;
   const targetPerDay = totalMiles / days;
   const stops: DayStop[] = [];
@@ -92,7 +97,9 @@ function autoStops(days: number, direction: Direction): DayStop[] {
         direction === "north_to_south"
           ? v.mile
           : 102 - v.mile;
-      const dist = Math.abs(progressMile - targetMile);
+      const rawDist = Math.abs(progressMile - targetMile);
+      const penalty = listingPenaltyMiles(LISTINGS_PER_VILLAGE[v.name.toLowerCase()] ?? 0);
+      const dist = rawDist + penalty;
       if (dist < bestDist && progressMile > lastMile && progressMile < totalMiles) {
         bestDist = dist;
         best = v;

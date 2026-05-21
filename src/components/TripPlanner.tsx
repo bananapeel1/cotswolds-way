@@ -4,12 +4,13 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePlanStorage } from "@/hooks/usePlanStorage";
 import {
-  autoStops, computeConnections, getStartVillage, getDayMileRange,
+  autoStops, computeConnections, countListingsByVillage, getStartVillage, getDayMileRange,
   approximateMileFromLat, WEATHER_DATA, RAINFALL_ICON,
   encodePlanToURL, planFromWishlist, TRAIL_TOTAL_MILES,
   TRAIL_TOTAL_ASCENT_M, TRAIL_TOTAL_DESCENT_M,
   type DayStop,
 } from "@/lib/plan-engine";
+import propertiesData from "@/data/properties.json";
 import { useWishlistStorage } from "@/hooks/useWishlistStorage";
 import { useForecast } from "@/hooks/useForecast";
 import { describeWmo, formatLocalTime } from "@/lib/weather";
@@ -111,7 +112,8 @@ export default function TripPlanner() {
   }, []);
 
   const buildRoute = useCallback(() => {
-    const newStops = autoStops(plan.days, plan.direction);
+    const listings = countListingsByVillage(propertiesData as Array<{ village: string }>);
+    const newStops = autoStops(plan.days, plan.direction, listings);
     updatePlan({ stops: newStops });
     setStep(2);
   }, [plan.days, plan.direction, updatePlan]);

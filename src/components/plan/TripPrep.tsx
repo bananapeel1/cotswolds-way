@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import type { DayStop } from "@/lib/plan-engine";
+import { trackOutboundClick } from "@/lib/track";
 
 type Tab = "transport" | "baggage" | "packlist";
 
@@ -110,7 +111,13 @@ function TransportPanel({ start, end }: { start: string; end: string }) {
                 <p className="text-xs text-stone">{o.via}</p>
                 <p className="text-[11px] text-stone-light mt-0.5">{o.time}</p>
               </div>
-              <a href={o.link} target="_blank" rel="noopener" className="text-xs font-semibold text-forest hover:underline whitespace-nowrap">
+              <a
+                href={o.link}
+                target="_blank"
+                rel="noopener"
+                onClick={() => trackOutboundClick({ source: "trip_prep", target: o.link, label: o.mode, meta: { surface: "transport_outbound" } })}
+                className="text-xs font-semibold text-forest hover:underline whitespace-nowrap"
+              >
                 Book ↗
               </a>
             </li>
@@ -130,7 +137,13 @@ function TransportPanel({ start, end }: { start: string; end: string }) {
                 <p className="text-xs text-stone">{o.via}</p>
                 <p className="text-[11px] text-stone-light mt-0.5">{o.time}</p>
               </div>
-              <a href={o.link} target="_blank" rel="noopener" className="text-xs font-semibold text-forest hover:underline whitespace-nowrap">
+              <a
+                href={o.link}
+                target="_blank"
+                rel="noopener"
+                onClick={() => trackOutboundClick({ source: "trip_prep", target: o.link, label: o.mode, meta: { surface: "transport_inbound" } })}
+                className="text-xs font-semibold text-forest hover:underline whitespace-nowrap"
+              >
                 Book ↗
               </a>
             </li>
@@ -192,7 +205,13 @@ function BaggagePanel({ nights, hasAccommodation }: { nights: number; hasAccommo
                 <p className="font-semibold text-ink">{op.name}</p>
                 <p className="text-xs text-stone">{op.coverage}</p>
               </div>
-              <a href={op.website} target="_blank" rel="noopener" className="text-xs font-semibold text-forest hover:underline whitespace-nowrap">
+              <a
+                href={op.website}
+                target="_blank"
+                rel="noopener"
+                onClick={() => trackOutboundClick({ source: "trip_prep", target: op.website, label: op.name, meta: { surface: "baggage" } })}
+                className="text-xs font-semibold text-forest hover:underline whitespace-nowrap"
+              >
                 Visit ↗
               </a>
             </div>

@@ -4,6 +4,7 @@ import { extractBriefFlow } from "@/lib/ai/flows/extract-brief";
 import {
   applyBriefToStops,
   autoStops,
+  countListingsByVillage,
   daysFromFitness,
   type PlanState,
 } from "@/lib/plan-engine";
@@ -26,6 +27,7 @@ const RequestSchema = z.object({
 });
 
 const properties = propertiesData as Property[];
+const listingsPerVillage = countListingsByVillage(properties);
 
 export async function POST(req: NextRequest) {
   let body: z.infer<typeof RequestSchema>;
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     const days = brief.days ?? daysFromFitness(brief.fitness);
     const direction = brief.direction ?? "north_to_south";
-    const stops = autoStops(days, direction);
+    const stops = autoStops(days, direction, listingsPerVillage);
     const { stops: enrichedStops, rationale } = applyBriefToStops(stops, brief, properties);
 
     const planState: PlanState = {

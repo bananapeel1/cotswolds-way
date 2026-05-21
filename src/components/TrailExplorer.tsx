@@ -6,6 +6,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { VILLAGES, type PlannedAccommodation } from "@/lib/plan-engine";
 import { usePlanStorage } from "@/hooks/usePlanStorage";
+import { trackOutboundClick } from "@/lib/track";
 
 interface POI {
   id: number;
@@ -330,7 +331,7 @@ export default function TrailExplorer() {
         </div>`;
       if (openingHours) html += `<div style="font-size:10px;color:#665d4e;margin-bottom:2px">Hours: ${openingHours}</div>`;
       if (phone) html += `<div style="font-size:10px"><a href="tel:${phone}" style="color:#154212">Tel: ${phone}</a></div>`;
-      if (website) html += `<div style="font-size:10px;margin-top:2px"><a href="${website}" target="_blank" rel="noopener" style="color:#154212;font-weight:600">Visit website →</a></div>`;
+      if (website) html += `<div style="font-size:10px;margin-top:2px"><a href="${website}" target="_blank" rel="noopener" data-track="poi-popup" data-track-label="${poi.name.replace(/"/g, "&quot;")}" style="color:#154212;font-weight:600">Visit website →</a></div>`;
       html += "</div>";
 
       const marker = new mapboxgl.Marker({ element: el })
@@ -343,6 +344,25 @@ export default function TrailExplorer() {
   }, [visiblePois, layers, mapReady]);
 
   useEffect(() => { renderMarkers(); }, [renderMarkers]);
+
+  // Mapbox popup HTML is injected as a raw string, so we can't attach React
+  // onClick handlers to its links. Catch popup-link clicks via delegation
+  // (data-track="poi-popup" attr set when the popup HTML is built).
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      const link = target?.closest?.('a[data-track="poi-popup"]') as HTMLAnchorElement | null;
+      if (!link) return;
+      trackOutboundClick({
+        source: "browse",
+        target: link.href,
+        label: link.getAttribute("data-track-label") ?? undefined,
+        meta: { surface: "map_popup" },
+      });
+    }
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, []);
 
   useEffect(() => {
     if (!map.current || !mapReady) return;
@@ -566,7 +586,17 @@ export default function TrailExplorer() {
                             </a>
                           )}
                           {website && (
-                            <a href={website} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="p-1.5 rounded-full hover:bg-primary/10 transition-colors" title="Website">
+                            <a
+                              href={website}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                trackOutboundClick({ source: "browse", target: website, label: poi.name });
+                              }}
+                              className="p-1.5 rounded-full hover:bg-primary/10 transition-colors"
+                              title="Website"
+                            >
                               <span className="material-symbols-outlined text-base text-secondary">open_in_new</span>
                             </a>
                           )}

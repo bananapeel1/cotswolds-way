@@ -1,7 +1,10 @@
 "use client";
 
-import { autoStops, estimateCosts, TRAIL_TOTAL_MILES, type PlanState } from "@/lib/plan-engine";
+import { autoStops, countListingsByVillage, estimateCosts, TRAIL_TOTAL_MILES, type PlanState } from "@/lib/plan-engine";
 import { useUnits } from "@/contexts/UnitContext";
+import propertiesData from "@/data/properties.json";
+
+const LISTINGS_PER_VILLAGE = countListingsByVillage(propertiesData as Array<{ village: string }>);
 
 export default function WhatIfComparison({
   currentPlan,
@@ -12,7 +15,7 @@ export default function WhatIfComparison({
 }) {
   const { formatDistance } = useUnits();
   const variants = [7, 10, 14].map(days => {
-    const stops = autoStops(days, currentPlan.direction);
+    const stops = autoStops(days, currentPlan.direction, LISTINGS_PER_VILLAGE);
     const hardestDay = stops.reduce((max, s) => s.walkScore > max.walkScore ? s : max, stops[0]);
     const costs = estimateCosts(days - 1);
     const avgMiles = Math.round((TRAIL_TOTAL_MILES / days) * 10) / 10;

@@ -600,7 +600,37 @@ export function findSegmentProfile(from: string, to: string): { ascentFt: number
     : { ascentM: ad.descentM, descentM: ad.ascentM, ascentFt: ad.descentFt, descentFt: ad.ascentFt };
 }
 
-export function autoStops(days: number, direction: "north_to_south" | "south_to_north"): DayStop[] {
+/** Tally properties by village name (case-insensitive). Pass the result to
+ * autoStops so it can prefer villages with real inventory. */
+export function countListingsByVillage(
+  properties: readonly { village: string }[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const p of properties) {
+    const key = p.village.toLowerCase();
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** Mile-equivalent penalty added to a village's distance-to-target score based
+ * on how many bookable listings it has. Soft — even 0-listing villages can win
+ * if the next-best candidate is meaningfully further off the daily mile target.
+ *   2+ listings → no penalty
+ *   1 listing  → +5 mi (mild preference for better-stocked alternatives)
+ *   0 listings → +15 mi (strong but not exclusive)
+ */
+function listingPenalty(count: number): number {
+  if (count >= 2) return 0;
+  if (count === 1) return 5;
+  return 15;
+}
+
+export function autoStops(
+  days: number,
+  direction: "north_to_south" | "south_to_north",
+  listingsPerVillage?: Record<string, number>,
+): DayStop[] {
   const totalMiles = TRAIL_TOTAL_MILES;
   const targetPerDay = totalMiles / days;
   const stops: DayStop[] = [];
@@ -623,7 +653,11 @@ export function autoStops(days: number, direction: "north_to_south" | "south_to_
     for (const v of orderedVillages) {
       if (used.has(v.name) || v.name === endVillage.name) continue;
       const progressMile = direction === "north_to_south" ? v.mile : totalMiles - v.mile;
-      const dist = Math.abs(progressMile - targetMile);
+      const rawDist = Math.abs(progressMile - targetMile);
+      const penalty = listingsPerVillage
+        ? listingPenalty(listingsPerVillage[v.name.toLowerCase()] ?? 0)
+        : 0;
+      const dist = rawDist + penalty;
       if (dist < bestDist && progressMile > lastMile && progressMile < totalMiles) {
         bestDist = dist;
         best = v;
