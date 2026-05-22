@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import LoopMap from "@/components/LoopMap";
 import RouteStartPicker, { type Place } from "@/components/RouteStartPicker";
+import { cacheKeyToSlug } from "@/lib/share-slug";
 
 /**
  * /walks — production-facing route generator.
@@ -332,6 +333,8 @@ export default function WalksPage() {
 
           {result && <ResultPanel result={result} />}
 
+          {result && <ShareActions cacheKey={result.cacheKey} />}
+
           {result?.narrative && <NarrativePanel narrative={result.narrative} />}
         </aside>
       </div>
@@ -428,6 +431,53 @@ function ResultPanel({ result }: { result: RouteResponse }) {
         <dt className="text-on-surface-variant">Score</dt>
         <dd className="font-medium">{result.score.toFixed(2)}</dd>
       </dl>
+    </section>
+  );
+}
+
+/**
+ * Share + GPX actions for a just-generated walk. Slug is derived from the
+ * cacheKey via the deterministic substitution in share-slug.ts, so the
+ * permalink at /walks/r/[slug] resolves immediately.
+ *
+ * Clipboard pattern matches src/components/MyTripSummary.tsx: navigator.
+ * clipboard.writeText + 2-second visual feedback, silent no-op on failure
+ * (older browsers, non-secure contexts).
+ */
+function ShareActions({ cacheKey }: { cacheKey: string }) {
+  const [copied, setCopied] = useState(false);
+  const slug = cacheKeyToSlug(cacheKey);
+
+  async function copyLink() {
+    try {
+      const url = `${window.location.origin}/walks/r/${slug}`;
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore — fallback would be a prompt, not worth it for V1
+    }
+  }
+
+  return (
+    <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
+      <h2 className="font-serif text-lg text-primary">Take it with you</h2>
+      <div className="mt-3 flex flex-col gap-2">
+        <a
+          href={`/api/routes/${slug}/gpx`}
+          download
+          className="flex items-center justify-center rounded bg-tertiary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-tertiary/90"
+        >
+          Download GPX
+        </a>
+        <button
+          type="button"
+          onClick={copyLink}
+          className="flex items-center justify-center rounded bg-surface-container-high px-4 py-2 text-sm font-medium text-on-surface hover:bg-surface-container-highest"
+        >
+          {copied ? "Link copied ✓" : "Copy share link"}
+        </button>
+      </div>
     </section>
   );
 }
