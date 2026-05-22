@@ -45,7 +45,18 @@ export async function pingGraphHopper(timeoutMs = 1500): Promise<boolean> {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type Theme = "ridge" | "valley" | "woodland";
+export type Theme = "ridge" | "valley" | "woodland" | "mixed";
+
+/** How hard a walker wants the day. Tunes the scoring's ascent preference. */
+export type Difficulty = "easy" | "moderate" | "strenuous";
+
+/** Walking pace. Tunes durationMin via a Naismith multiplier. */
+export type Pace = "leisurely" | "steady" | "brisk";
+
+/** Whether the loop must pass a lunch-suitable POI. Affects candidate ranking
+ *  and (for "required") strictly filters POI choice — different POI → likely
+ *  different geometry, so this is part of the cache key. */
+export type LunchStop = "required" | "preferred" | "none";
 
 export interface LoopRequest {
   startLat: number;
@@ -53,6 +64,19 @@ export interface LoopRequest {
   /** Target loop length in km. Engine accepts ±25% on the actual result. */
   targetKm: number;
   theme: Theme;
+  difficulty?: Difficulty;
+  pace?: Pace;
+  lunchStop?: LunchStop;
+}
+
+/** Resolve LoopRequest's optional customization fields to their defaults. */
+export function resolveLoopRequest(req: LoopRequest): Required<LoopRequest> {
+  return {
+    ...req,
+    difficulty: req.difficulty ?? "moderate",
+    pace: req.pace ?? "steady",
+    lunchStop: req.lunchStop ?? "preferred",
+  };
 }
 
 export interface MidpointPoi {
@@ -88,10 +112,17 @@ export const ENGINE_VERSION = "v2"; // v2 = GraphHopper backend
 export function buildCacheKey(req: LoopRequest): string {
   // Coarse grid bucket (~2km) collapses near-by postcodes to the same route.
   // Distance bucketed to 5km bins.
+  //
+  // Only params that affect the GEOMETRY belong in the cache key. Difficulty
+  // and pace tune score + duration but use the same underlying polyline, so
+  // they're re-derived at serve time from the cached ascentM / actualKm.
+  // LunchStop = required forces a different POI → different geometry, so it
+  // does belong in the key.
   const latBucket = (Math.round(req.startLat * 50) / 50).toFixed(2);
   const lngBucket = (Math.round(req.startLng * 50) / 50).toFixed(2);
   const kmBucket = Math.max(5, Math.round(req.targetKm / 5) * 5);
-  return `grid=${latBucket},${lngBucket}|km=${kmBucket}|theme=${req.theme}|v=${ENGINE_VERSION}`;
+  const lunch = req.lunchStop ?? "preferred";
+  return `grid=${latBucket},${lngBucket}|km=${kmBucket}|theme=${req.theme}|lunch=${lunch}|v=${ENGINE_VERSION}`;
 }
 
 // ─── Find cached ────────────────────────────────────────────────────────────
@@ -243,15 +274,41 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
     const midpoint = routeMidpointCoord(r.coords);
 
     // Look for a theme-matching POI within 1.5 km of the midpoint.
+    // For lunchStop=required we ask for a wider candidate set because we'll
+    // filter out non-lunch-stop rows in JS — the SQL function doesn't know
+    // about that constraint and changing its signature would force a
+    // migration we don't need.
+    const lunchPref = req.lunchStop ?? "preferred";
+    const maxCandidates = lunchPref === "required" ? 12 : 3;
     const poisRes = await sb.rpc("candidate_midpoint_pois", {
       start_lng: midpoint[0],
       start_lat: midpoint[1],
       theme_filter: req.theme,
       band_lo_m: 0,
       band_hi_m: 1500,
-      max_candidates: 3,
+      max_candidates: maxCandidates,
     });
-    const poiRows = (poisRes.data ?? []) as CandidateRow[];
+    let poiRows = (poisRes.data ?? []) as CandidateRow[];
+
+    if (lunchPref === "required") {
+      poiRows = poiRows.filter((p) => p.is_lunch_stop);
+    } else if (lunchPref === "preferred") {
+      // Stable sort: lunch stops first, then by scenic_score within each tier.
+      poiRows = [...poiRows].sort((a, b) => {
+        const lunchDelta = Number(b.is_lunch_stop) - Number(a.is_lunch_stop);
+        if (lunchDelta !== 0) return lunchDelta;
+        return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+      });
+    } else if (lunchPref === "none") {
+      // Non-lunch first; users picking "none" likely want viewpoints, peaks,
+      // or watercourses rather than another pub.
+      poiRows = [...poiRows].sort((a, b) => {
+        const lunchDelta = Number(a.is_lunch_stop) - Number(b.is_lunch_stop);
+        if (lunchDelta !== 0) return lunchDelta;
+        return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+      });
+    }
+
     const poi: MidpointPoi | null =
       poiRows.length > 0
         ? {
@@ -344,13 +401,16 @@ export async function findOrGenerate(req: LoopRequest): Promise<LoopResult | nul
   const cacheKey = buildCacheKey(req);
 
   const cached = await findCached(cacheKey);
-  if (cached) return cached;
+  if (cached) return applyCustomizations(cached, req);
 
   const fresh = await generateLoop(req);
   if (!fresh) return null;
 
+  // Persist the baseline (steady-pace, moderate-difficulty) row so other
+  // (difficulty, pace) combos reuse the same geometry. Apply the caller's
+  // customisations to what we return.
   await persistRoute(fresh, req);
-  return fresh;
+  return applyCustomizations(fresh, req);
 }
 
 async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
@@ -401,13 +461,32 @@ export interface ScoreInputs {
   midpointScenicScore: number;
 }
 
+/**
+ * Difficulty-aware elevation fitness. Gaussian bell curve centred on the
+ * ideal ascent for the chosen difficulty: easy walkers want a low-ascent
+ * route, strenuous walkers want significant climb, moderate is in between.
+ *
+ * Previously this was Math.tanh(ascentM/250) — monotonically rewarding more
+ * climb, which scored "strenuous" routes higher across the board regardless
+ * of user intent. The bell-curve makes the engine respect easy walkers'
+ * preference for flat days.
+ */
+function elevationFitness(ascentM: number, difficulty: Difficulty): number {
+  const ideal: Record<Difficulty, number> = { easy: 80, moderate: 175, strenuous: 325 };
+  const tolerance: Record<Difficulty, number> = { easy: 75, moderate: 175, strenuous: 200 };
+  return Math.exp(-Math.pow((ascentM - ideal[difficulty]) / tolerance[difficulty], 2));
+}
+
 export function scoreLoop(s: ScoreInputs, req: LoopRequest): number {
+  const difficulty = req.difficulty ?? "moderate";
   const distanceFit = Math.max(0, 1 - Math.abs(s.actualKm - req.targetKm) / req.targetKm);
   const overlapPenalty = Math.max(0, 1 - s.overlap);
   const roadAvoidance = Math.max(0, 1 - s.roadM / Math.max(1, s.actualKm * 1000));
   const poiBonus = Math.min(1, s.midpointScenicScore / 10);
-  const elevationVariety = Math.tanh(s.ascentM / 250);
-  // Naismith feasibility: under 8 hours = feasible.
+  const elevationFit = elevationFitness(s.ascentM, difficulty);
+  // Naismith feasibility: under 8 hours = feasible. Uses the durationMin
+  // already adjusted for pace, so brisk walkers can score longer walks
+  // higher than steady walkers can.
   const timeFeasibility = s.durationMin <= 8 * 60 ? 1 : 0;
 
   return (
@@ -415,9 +494,49 @@ export function scoreLoop(s: ScoreInputs, req: LoopRequest): number {
     overlapPenalty * 0.20 +
     roadAvoidance * 0.20 +
     poiBonus * 0.10 +
-    elevationVariety * 0.10 +
+    elevationFit * 0.10 +
     timeFeasibility * 0.05
   );
+}
+
+// ─── Per-request customization ──────────────────────────────────────────────
+
+const PACE_MULTIPLIER: Record<Pace, number> = {
+  leisurely: 1.2,
+  steady: 1.0,
+  brisk: 0.85,
+};
+
+/**
+ * Apply per-request customisations (difficulty, pace) to a LoopResult that
+ * may have come from cache. Returns a new LoopResult with score and
+ * durationMin recomputed using the caller's preferences. Doesn't mutate.
+ *
+ * Why this lives outside the cache layer: difficulty and pace don't change
+ * the underlying polyline — only how we *describe* and *time* it. Storing
+ * a row per (lat-bin, km-bin, theme, lunchStop, difficulty, pace) would
+ * fragment the cache 9×; we keep one row per geometry and re-derive these
+ * values at serve time.
+ */
+function applyCustomizations(loop: LoopResult, req: LoopRequest): LoopResult {
+  const pace = req.pace ?? "steady";
+  const adjustedDurationMin = Math.round(loop.durationMin * PACE_MULTIPLIER[pace]);
+  const score = scoreLoop(
+    {
+      actualKm: loop.actualKm,
+      roadM: 0,
+      overlap: 0.05,
+      ascentM: loop.ascentM,
+      durationMin: adjustedDurationMin,
+      midpointScenicScore: loop.midpointPoi.scenicScore,
+    },
+    req,
+  );
+  return {
+    ...loop,
+    durationMin: adjustedDurationMin,
+    score: Math.round(score * 100) / 100,
+  };
 }
 
 // ─── Geometry helpers ───────────────────────────────────────────────────────

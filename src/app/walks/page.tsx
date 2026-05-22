@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LoopMap from "@/components/LoopMap";
 import RouteStartPicker, { type Place } from "@/components/RouteStartPicker";
 
@@ -10,11 +10,19 @@ import RouteStartPicker, { type Place } from "@/components/RouteStartPicker";
  * Pick a start (postcode or village in the Cotswolds), a theme, and a
  * distance; the engine returns a circular walk with an AI narrative.
  *
- * /walks/preview remains as a dev fixture with a hardcoded Stow start; this
- * page replaces the hidden preview as the user-visible entry point.
+ * "More options" reveals customisation that the engine and Gemini both
+ * honour: difficulty tunes the scoring's ascent preference, pace tunes the
+ * walking-time estimate, lunch-stop preference tunes POI candidate selection
+ * and narrative emphasis. Defaults match the engine defaults so nothing
+ * unexpected happens on first visit.
+ *
+ * /walks/preview remains as a dev fixture with a hardcoded Stow start.
  */
 
-type Theme = "ridge" | "valley" | "woodland";
+type Theme = "ridge" | "valley" | "woodland" | "mixed";
+type Difficulty = "easy" | "moderate" | "strenuous";
+type Pace = "leisurely" | "steady" | "brisk";
+type LunchStop = "required" | "preferred" | "none";
 
 interface MidpointPoi {
   id: number;
@@ -48,6 +56,7 @@ const THEMES: { value: Theme; label: string; hint: string }[] = [
   { value: "ridge", label: "Ridge", hint: "High ground and panoramic views" },
   { value: "valley", label: "Valley", hint: "Farmland, watercourses, villages" },
   { value: "woodland", label: "Woodland", hint: "Tracks under tree cover" },
+  { value: "mixed", label: "Mixed", hint: "Engine picks the best loop regardless of terrain" },
 ];
 
 const DISTANCES = [
@@ -57,13 +66,80 @@ const DISTANCES = [
   { value: 20, label: "20 km", subtitle: "~12.5 mi — long day" },
 ];
 
+const DIFFICULTIES: { value: Difficulty; label: string; hint: string }[] = [
+  { value: "easy", label: "Easy", hint: "Low ascent (~75 m), relaxed day" },
+  { value: "moderate", label: "Moderate", hint: "Mixed ground (~175 m ascent)" },
+  { value: "strenuous", label: "Strenuous", hint: "Serious climb (~325 m+ ascent)" },
+];
+
+const PACES: { value: Pace; label: string; hint: string }[] = [
+  { value: "leisurely", label: "Leisurely", hint: "Stops for views and tea (+20% time)" },
+  { value: "steady", label: "Steady", hint: "Naismith baseline" },
+  { value: "brisk", label: "Brisk", hint: "Few stops, moving on (−15% time)" },
+];
+
+const LUNCH_STOPS: { value: LunchStop; label: string; hint: string }[] = [
+  { value: "required", label: "Required", hint: "Must include a pub or cafe at midpoint" },
+  { value: "preferred", label: "Preferred", hint: "Rank lunch stops first (default)" },
+  { value: "none", label: "None", hint: "Skip food stops, viewpoint at midpoint" },
+];
+
+const PREFS_KEY = "walksPreferences";
+
+interface PersistedPrefs {
+  theme?: Theme;
+  km?: number;
+  difficulty?: Difficulty;
+  pace?: Pace;
+  lunchStop?: LunchStop;
+}
+
 export default function WalksPage() {
   const [start, setStart] = useState<Place | null>(null);
   const [theme, setTheme] = useState<Theme>("ridge");
   const [km, setKm] = useState(12);
+  const [difficulty, setDifficulty] = useState<Difficulty>("moderate");
+  const [pace, setPace] = useState<Pace>("steady");
+  const [lunchStop, setLunchStop] = useState<LunchStop>("preferred");
+  const [showMore, setShowMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<RouteResponse | null>(null);
   const [error, setError] = useState<{ kind: string; message: string } | null>(null);
+
+  // Restore prefs once on mount. We deliberately don't validate the values
+  // against the constants — if a value goes stale (e.g. a theme is removed),
+  // it'll just look weird in the UI until the user picks again. Cheap fix.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw) as PersistedPrefs;
+      if (p.theme) setTheme(p.theme);
+      if (typeof p.km === "number") setKm(p.km);
+      if (p.difficulty) setDifficulty(p.difficulty);
+      if (p.pace) setPace(p.pace);
+      if (p.lunchStop) setLunchStop(p.lunchStop);
+      // If any non-default is set, default to More options open.
+      if (p.difficulty !== "moderate" || p.pace !== "steady" || p.lunchStop !== "preferred") {
+        setShowMore(true);
+      }
+    } catch {
+      // ignore — bad localStorage payload is non-fatal
+    }
+  }, []);
+
+  // Persist whenever any control changes. JSON.stringify is fine here — the
+  // payload is tiny and we're not on a hot path.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        PREFS_KEY,
+        JSON.stringify({ theme, km, difficulty, pace, lunchStop } satisfies PersistedPrefs),
+      );
+    } catch {
+      // localStorage might be unavailable (private mode etc.). Non-fatal.
+    }
+  }, [theme, km, difficulty, pace, lunchStop]);
 
   async function generate() {
     if (!start) return;
@@ -79,6 +155,9 @@ export default function WalksPage() {
           lng: start.lng,
           km,
           theme,
+          difficulty,
+          pace,
+          lunchStop,
           startLabel: start.label,
         }),
       });
@@ -163,7 +242,7 @@ export default function WalksPage() {
             <div className="mt-4 space-y-4">
               <fieldset>
                 <legend className="block text-sm font-medium text-on-surface">Theme</legend>
-                <div className="mt-2 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {THEMES.map((t) => (
                     <button
                       key={t.value}
@@ -200,6 +279,40 @@ export default function WalksPage() {
                 </select>
               </label>
 
+              {/* More options expander — collapsed by default, persisted open
+                  if a non-default value was previously chosen. */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowMore((v) => !v)}
+                  className="text-xs font-medium text-on-surface-variant hover:text-on-surface"
+                >
+                  {showMore ? "Hide options" : "More options"}
+                </button>
+                {showMore && (
+                  <div className="mt-3 space-y-4 border-t border-outline-variant/30 pt-4">
+                    <OptionGroup
+                      label="Difficulty"
+                      options={DIFFICULTIES}
+                      value={difficulty}
+                      onChange={setDifficulty}
+                    />
+                    <OptionGroup
+                      label="Pace"
+                      options={PACES}
+                      value={pace}
+                      onChange={setPace}
+                    />
+                    <OptionGroup
+                      label="Lunch stop"
+                      options={LUNCH_STOPS}
+                      value={lunchStop}
+                      onChange={setLunchStop}
+                    />
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={generate}
                 disabled={!canGenerate}
@@ -227,6 +340,49 @@ export default function WalksPage() {
 }
 
 // ─── Subcomponents ──────────────────────────────────────────────────────────
+
+/**
+ * Generic 3-button group used for difficulty / pace / lunchStop. Stable
+ * generic signature so the value/onChange types are inferred at the call
+ * site without needing a separate wrapper per param.
+ */
+function OptionGroup<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: T; label: string; hint: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="block text-sm font-medium text-on-surface">{label}</legend>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={`rounded px-2 py-2 text-xs ${
+              value === o.value
+                ? "bg-primary text-on-primary"
+                : "bg-surface-container-high text-on-surface hover:bg-surface-container-highest"
+            }`}
+            title={o.hint}
+          >
+            <div className="font-medium">{o.label}</div>
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-xs text-on-surface-variant">
+        {options.find((o) => o.value === value)?.hint}
+      </p>
+    </fieldset>
+  );
+}
 
 function ErrorPanel({ error }: { error: { kind: string; message: string } }) {
   // Human-readable headline by error kind. The server already returns a

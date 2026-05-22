@@ -7,7 +7,7 @@
  * endpoint has zero startup overhead.
  */
 
-import type { LoopResult, Theme } from "@/lib/route-engine";
+import type { Difficulty, LoopResult, LunchStop, Pace, Theme } from "@/lib/route-engine";
 
 const GEMINI_REST_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
@@ -59,13 +59,54 @@ export interface NarrateRouteInput {
   loop: LoopResult;
   theme: Theme;
   startLabel?: string;
+  /** Tunes the voice: easy = relaxed afternoon, strenuous = serious day out. */
+  difficulty?: Difficulty;
+  /** Tunes how durationMin is contextualised in the prose. */
+  pace?: Pace;
+  /** Tunes paragraph 2's treatment of the midpoint POI. */
+  lunchStop?: LunchStop;
+}
+
+// Per-difficulty voice nudge. Empty string for moderate (default voice).
+const DIFFICULTY_GUIDE: Record<Difficulty, string> = {
+  easy: "The walker has chosen 'easy'. Pitch this as a relaxed afternoon: gentle terrain, low effort, no need to rush. Don't use language that suggests a hard workout. The verdict line should reflect this — a walk to recharge on, not a challenge.",
+  moderate: "",
+  strenuous: "The walker has chosen 'strenuous'. Pitch this as a proper day out for fit walkers: emphasise the climb, the satisfaction of effort, and the views earned. Don't undersell the demand. The verdict line should reflect this — a walk that asks something of you.",
+};
+
+// Per-pace pace nudge. Empty for steady.
+const PACE_GUIDE: Record<Pace, string> = {
+  leisurely: "Walking time is calculated for a leisurely pace with stops. Mention this once if it helps the walker plan their day.",
+  steady: "",
+  brisk: "Walking time is calculated for a brisk pace with minimal stops. Mention this once if it helps the walker plan their day.",
+};
+
+// Per-lunch-stop midpoint nudge. The default ("preferred") relies on the
+// system prompt's standing instruction; required and none override it.
+function lunchGuide(pref: LunchStop, midpointName: string): string {
+  switch (pref) {
+    case "required":
+      return `The walker explicitly wants a lunch stop. ${midpointName} is the anchor of the day — in paragraph 2, describe it concretely (the room, the food, why people stop there). Don't treat it as just another waypoint.`;
+    case "none":
+      return `The walker is NOT stopping for lunch on this route. Treat ${midpointName} as a moment to pause and look around in paragraph 2, not as a place to refuel. Do not describe ordering food or sitting down for a meal.`;
+    case "preferred":
+    default:
+      return "";
+  }
 }
 
 export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
   system: string;
   prompt: string;
 } {
-  const { loop, theme, startLabel } = input;
+  const {
+    loop,
+    theme,
+    startLabel,
+    difficulty = "moderate",
+    pace = "steady",
+    lunchStop = "preferred",
+  } = input;
 
   const km = loop.actualKm.toFixed(1);
   const miles = (loop.actualKm * 0.6214).toFixed(1);
@@ -77,6 +118,16 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
     ridge: "high ground with longer views",
     valley: "lower paths through farmland and watercourses",
     woodland: "tree-covered tracks and shaded paths",
+    mixed: "a blend of high ground, valley paths, and tree cover — the engine picked the best-scoring midpoint without filtering by terrain class",
+  };
+
+  // Pace-aware framing of walking time in the prompt itself. The narrative
+  // text the user reads still says "your steady pace" / "brisk pace" / etc.
+  // when it makes sense.
+  const paceLabel: Record<Pace, string> = {
+    leisurely: "leisurely pace with stops",
+    steady: "steady pace",
+    brisk: "brisk pace with minimal stops",
   };
 
   const midpoint = loop.midpointPoi;
@@ -88,17 +139,33 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
     `Scenic score: ${midpoint.scenicScore}/10.`,
   ].filter(Boolean);
 
+  // Assemble only the customisation guidance that's non-default. Keeps the
+  // prompt short on the common path and gives Gemini sharp signal when the
+  // walker actually deviates.
+  const customisation = [
+    DIFFICULTY_GUIDE[difficulty],
+    PACE_GUIDE[pace],
+    lunchGuide(lunchStop, midpoint.name),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const prompt = `Route to narrate:
 
 Start${startLabel ? ` (${startLabel})` : ""}: lat ${(loop.geometry.coordinates[0][1] as number).toFixed(5)}, lng ${(loop.geometry.coordinates[0][0] as number).toFixed(5)}.
 Theme: ${theme} (${themeDescriptions[theme]}).
 Distance: ${km} km (${miles} miles), closed loop returning to start.
 Total ascent: ${loop.ascentM} m.
-Walking time at a steady pace: ${time}.
+Walking time at a ${paceLabel[pace]}: ${time}.
+Difficulty: ${difficulty}.
 
 Midpoint POI (mention by name in paragraph 2):
 ${midpointFacts.map((f) => `- ${f}`).join("\n")}
-
+${
+  customisation
+    ? `\nWalker preferences (adjust your voice accordingly):\n${customisation}\n`
+    : ""
+}
 Now write the 3-paragraph blurb. Follow the structure exactly. Do not break the voice rules.`;
 
   return { system: NARRATE_SYSTEM, prompt };

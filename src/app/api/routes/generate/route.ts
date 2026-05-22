@@ -18,7 +18,12 @@ const RequestSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   km: z.number().min(3).max(40),
-  theme: z.enum(["ridge", "valley", "woodland"]),
+  theme: z.enum(["ridge", "valley", "woodland", "mixed"]),
+  // Optional customisation. Defaults mirror the engine's old behaviour so
+  // unchanged clients see no shift.
+  difficulty: z.enum(["easy", "moderate", "strenuous"]).default("moderate"),
+  pace: z.enum(["leisurely", "steady", "brisk"]).default("steady"),
+  lunchStop: z.enum(["required", "preferred", "none"]).default("preferred"),
   startLabel: z.string().optional(),
 });
 
@@ -119,6 +124,9 @@ export async function POST(req: NextRequest) {
       startLng: body.lng,
       targetKm: body.km,
       theme: body.theme as Theme,
+      difficulty: body.difficulty,
+      pace: body.pace,
+      lunchStop: body.lunchStop,
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
@@ -171,6 +179,9 @@ export async function POST(req: NextRequest) {
         loop,
         theme: body.theme as Theme,
         startLabel: body.startLabel,
+        difficulty: body.difficulty,
+        pace: body.pace,
+        lunchStop: body.lunchStop,
       });
       // Awaited so the DB write completes before Next.js tears down the
       // serverless context. Pre-fix, the fire-and-forget version was racing
@@ -189,6 +200,9 @@ export async function POST(req: NextRequest) {
     outcome: loop.cached ? "cached" : "generated",
     theme: body.theme,
     km: body.km,
+    difficulty: body.difficulty,
+    pace: body.pace,
+    lunch_stop: body.lunchStop,
     actual_km: loop.actualKm.toFixed(1),
     score: loop.score.toFixed(2),
     cache_key: loop.cacheKey,
