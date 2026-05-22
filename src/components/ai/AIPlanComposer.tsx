@@ -3,19 +3,106 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Archetype, PlanState, DayStop } from "@/lib/plan-engine";
-import type { TripBrief, PlanRationale } from "@/lib/ai/schemas/trip-brief";
+import {
+  insertStopAtVillage,
+  insertRestDay,
+  removeStopWithWarning,
+  VILLAGES,
+} from "@/lib/plan-engine";
+import type { TripBrief, PlanRationale, ReplanMutation } from "@/lib/ai/schemas/trip-brief";
 import { usePace } from "@/contexts/PaceContext";
 import { trackEvent, trackOutboundClick } from "@/lib/track";
+import propertiesData from "@/data/properties.json";
+import type { Property } from "@/lib/queries";
 
-/** Map the AI-extracted fitness enum to our pace archetype. */
+// ─── Module-level constants ───────────────────────────────────────────────────
+
+const properties = propertiesData as Property[];
+const VILLAGE_NAMES = VILLAGES.map((v) => v.name);
+
+const FITNESS_LABELS: Record<TripBrief["fitness"], string> = {
+  relaxed: "Easy pace",
+  moderate: "Moderate",
+  fit: "Fit walker",
+  "very-fit": "Very fit",
+};
+
+// ─── Pure helpers (outside component for stable references) ───────────────────
+
 function fitnessToArchetype(fitness: TripBrief["fitness"]): Archetype {
   switch (fitness) {
-    case "relaxed": return "casual";
+    case "relaxed":  return "casual";
     case "moderate": return "steady";
-    case "fit": return "strong";
+    case "fit":      return "strong";
     case "very-fit": return "athletic";
   }
 }
+
+function friendlyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("high demand"))
+    return "The AI is busy right now — please try again in a moment.";
+  if (msg.includes("timeout") || msg.includes("timed out"))
+    return "The request timed out — try a simpler prompt.";
+  return msg;
+}
+
+/** Streams narration from /api/ai/narrate, calling onChunk for each text piece.
+ *  Returns the full accumulated text. Throws on network/server errors. */
+async function streamNarrationInto(
+  planState: PlanState,
+  brief: TripBrief,
+  rationale: PlanRationale,
+  signal: AbortSignal,
+  onChunk: (text: string) => void,
+): Promise<string> {
+  const res = await fetch("/api/ai/narrate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ planState, brief, rationale }),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `narration failed: ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  let errorMsg: string | null = null;
+
+  outer: while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+    for (const event of events) {
+      const lines = event.split("\n");
+      const eventLine = lines.find((l) => l.startsWith("event:"));
+      const dataLine  = lines.find((l) => l.startsWith("data:"));
+      if (!dataLine) continue;
+      const payload = dataLine.slice(5).trim();
+      if (eventLine?.includes("error")) {
+        try { errorMsg = JSON.parse(payload).error ?? "narration error"; }
+        catch { errorMsg = "narration error"; }
+        break outer;
+      }
+      if (eventLine?.includes("done")) break outer;
+      try {
+        const parsed = JSON.parse(payload);
+        if (parsed.text) { fullText += parsed.text; onChunk(parsed.text); }
+      } catch { /* ignore malformed chunk */ }
+    }
+  }
+
+  if (errorMsg) throw new Error(errorMsg);
+  return fullText;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 const PLAN_STORAGE_KEY = "cotswold-plan";
 const HISTORY_MAX = 20;
@@ -38,26 +125,233 @@ const EXAMPLES = [
   "Slow it down — 10 days, take it easy, character-led B&Bs, start in Bath going north",
 ];
 
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function AIPlanComposer() {
   const router = useRouter();
   const { setArchetype } = usePace();
-  const [input, setInput] = useState("");
-  const [history, setHistory] = useState<ChatMessage[]>([]);
-  const [planLoading, setPlanLoading] = useState(false);
-  const [narrateLoading, setNarrateLoading] = useState(false);
-  const [result, setResult] = useState<PlanResult | null>(null);
-  const [narration, setNarration] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saveAsDefault, setSaveAsDefault] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [shareLoading, setShareLoading] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
 
+  const [input, setInput]               = useState("");
+  const [history, setHistory]           = useState<ChatMessage[]>([]);
+  const [planLoading, setPlanLoading]   = useState(false);
+  const [narrateLoading, setNarrateLoading] = useState(false);
+  const [result, setResult]             = useState<PlanResult | null>(null);
+  const [narration, setNarration]       = useState("");
+  const [error, setError]               = useState<string | null>(null);
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const [shareUrl, setShareUrl]         = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareCopied, setShareCopied]   = useState(false);
+  const [pendingMutation, setPendingMutation] = useState<{
+    mutation: ReplanMutation;
+    summary: string;
+  } | null>(null);
+
+  const abortRef    = useRef<AbortController | null>(null);
+  const resultColRef = useRef<HTMLDivElement>(null);
+
+  // ── applyBriefOverride ────────────────────────────────────────────────────
+  // Used by chip edits and change-direction / change-start-date mutations.
+  const applyBriefOverride = useCallback(async (override: TripBrief) => {
+    if (planLoading) return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setError(null);
+    setNarration("");
+    setPlanLoading(true);
+
+    let planJson: PlanResult | null = null;
+    try {
+      const res = await fetch("/api/ai/plan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ briefOverride: override }),
+        signal: ac.signal,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `plan request failed: ${res.status}`);
+      }
+      planJson = (await res.json()) as PlanResult;
+      setResult(planJson);
+      trackEvent("plan_modified", { kind: "brief_chip_edit" });
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      setError(friendlyError(err));
+      setPlanLoading(false);
+      return;
+    }
+    setPlanLoading(false);
+
+    if (planJson) {
+      setNarrateLoading(true);
+      try {
+        const fullNarr = await streamNarrationInto(
+          planJson.planState,
+          planJson.brief,
+          planJson.rationale,
+          ac.signal,
+          (chunk) => setNarration((prev) => prev + chunk),
+        );
+        // Update the most recent assistant history message with the new narration
+        setHistory((h) => {
+          const idx = [...h].reverse().findIndex((m) => m.role === "assistant");
+          if (idx < 0) return h;
+          const realIdx = h.length - 1 - idx;
+          return h.map((m, i) => i === realIdx ? { ...m, content: fullNarr || "Plan updated." } : m);
+        });
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") setError(friendlyError(err));
+      }
+      setNarrateLoading(false);
+    }
+  }, [planLoading]);
+
+  // ── applyPendingMutation ──────────────────────────────────────────────────
+  const applyPendingMutation = useCallback(async () => {
+    if (!pendingMutation || !result) return;
+    const m       = pendingMutation.mutation;
+    const summary = pendingMutation.summary;
+    setPendingMutation(null);
+
+    // Direction and date changes require a full plan rebuild — delegate.
+    if (m.type === "change-direction") {
+      const flipped = result.planState.direction === "north_to_south"
+        ? "south_to_north" : "north_to_south";
+      await applyBriefOverride({ ...result.brief, direction: flipped });
+      return;
+    }
+    if (m.type === "change-start-date") {
+      await applyBriefOverride({ ...result.brief, startDate: m.startDate });
+      return;
+    }
+
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    let newPlanState: PlanState = result.planState;
+
+    switch (m.type) {
+      case "shorten-day": {
+        const next = insertStopAtVillage(
+          result.planState.stops, m.newOvernight, result.planState.direction,
+        );
+        newPlanState = { ...result.planState, stops: next, days: next.length };
+        break;
+      }
+      case "lengthen-day": {
+        const idx = result.planState.stops.findIndex(
+          (s) => s.village.toLowerCase() === m.removeOvernight.toLowerCase(),
+        );
+        if (idx < 0) { setError(`${m.removeOvernight} isn't in the current plan.`); return; }
+        const { stops: next } = removeStopWithWarning(
+          result.planState.stops, idx, result.planState.direction,
+        );
+        newPlanState = { ...result.planState, stops: next, days: next.length };
+        break;
+      }
+      case "insert-rest-day": {
+        const idx = result.planState.stops.findIndex(
+          (s) => s.village.toLowerCase() === m.village.toLowerCase(),
+        );
+        if (idx < 0) { setError(`${m.village} isn't in the current plan.`); return; }
+        const next = insertRestDay(result.planState.stops, idx);
+        newPlanState = { ...result.planState, stops: next, days: next.length };
+        break;
+      }
+      case "swap-accommodation": {
+        const prop = properties.find((p) => p.slug === m.newPropertySlug);
+        if (!prop) { setError("Property not found."); return; }
+        const nextStops = result.planState.stops.map((s) =>
+          s.day === m.day
+            ? {
+                ...s,
+                accommodation: {
+                  slug: prop.slug,
+                  name: prop.name,
+                  village: prop.village,
+                  propertyType: prop.property_type,
+                  image: prop.image_url ?? undefined,
+                },
+              }
+            : s,
+        );
+        newPlanState = { ...result.planState, stops: nextStops };
+        break;
+      }
+      default:
+        return;
+    }
+
+    setResult((r) => r ? { ...r, planState: newPlanState } : r);
+    trackEvent("plan_modified", { kind: "replan_mutation", mutation: m.type });
+
+    setNarration("");
+    setNarrateLoading(true);
+    try {
+      const { brief, rationale } = result;
+      const fullNarr = await streamNarrationInto(
+        newPlanState, brief, rationale, ac.signal,
+        (chunk) => setNarration((prev) => prev + chunk),
+      );
+      setHistory((h) => [
+        ...h,
+        { role: "assistant" as const, content: `${summary}\n\n${fullNarr}` },
+      ].slice(-HISTORY_MAX));
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") setError(friendlyError(err));
+    }
+    setNarrateLoading(false);
+  }, [pendingMutation, result, applyBriefOverride]);
+
+  // ── submit ────────────────────────────────────────────────────────────────
   const submit = useCallback(async () => {
     const text = input.trim();
     if (!text || planLoading) return;
 
+    // ── REPLAN BRANCH: plan exists → route through replanFlow ──────────────
+    if (result !== null) {
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
+
+      setHistory((h) => [...h, { role: "user" as const, content: text }].slice(-HISTORY_MAX));
+      setInput("");
+      setError(null);
+      setPlanLoading(true);
+      setPendingMutation(null);
+
+      try {
+        const res = await fetch("/api/ai/replan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ planState: result.planState, message: text, lockedDays: [] }),
+          signal: ac.signal,
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error ?? `replan failed: ${res.status}`);
+        }
+        const data = await res.json() as { mutation: ReplanMutation; summary: string };
+        const { mutation, summary } = data;
+
+        if (mutation.type === "clarify" || mutation.type === "decline") {
+          const reply = mutation.type === "clarify" ? mutation.question : mutation.reason;
+          setHistory((h) => [...h, { role: "assistant" as const, content: reply }].slice(-HISTORY_MAX));
+        } else {
+          setPendingMutation({ mutation, summary });
+        }
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") setError(friendlyError(err));
+      }
+      setPlanLoading(false);
+      return;
+    }
+    // ── END REPLAN BRANCH ──────────────────────────────────────────────────
+
+    // ── CREATE BRANCH: build a new plan from scratch ───────────────────────
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -95,86 +389,56 @@ export default function AIPlanComposer() {
         total_stops: planJson.planState.stops.length,
         stretched: planJson.planState.requestedDays != null,
       });
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: `Built a ${planJson.planState.days}-day plan with ${planJson.planState.stops.length} stops.`,
-      };
-      setHistory((h) => [...h, assistantMsg].slice(-HISTORY_MAX));
+      // Empty placeholder — filled with narration once streaming completes.
+      setHistory((h) => [...h, { role: "assistant" as const, content: "" }].slice(-HISTORY_MAX));
+
+      // Scroll result column into view on mobile (<lg breakpoint).
+      if (typeof window !== "undefined" && window.innerWidth < 1024) {
+        setTimeout(() => resultColRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
-      setError((err as Error).message);
+      setError(friendlyError(err));
       setPlanLoading(false);
       return;
     }
     setPlanLoading(false);
 
-    setNarrateLoading(true);
-    try {
-      const res = await fetch("/api/ai/narrate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          planState: planJson.planState,
-          brief: planJson.brief,
-          rationale: planJson.rationale,
-        }),
-        signal: ac.signal,
-      });
-      if (!res.ok || !res.body) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `narration failed: ${res.status}`);
+    if (planJson) {
+      setNarrateLoading(true);
+      try {
+        const fullNarr = await streamNarrationInto(
+          planJson.planState,
+          planJson.brief,
+          planJson.rationale,
+          ac.signal,
+          (chunk) => setNarration((prev) => prev + chunk),
+        );
+        // Replace the empty placeholder with the real narration.
+        setHistory((h) =>
+          h.map((m, i) =>
+            i === h.length - 1 && m.role === "assistant"
+              ? { ...m, content: fullNarr || "Plan built." }
+              : m,
+          ),
+        );
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") setError(friendlyError(err));
       }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() ?? "";
-        for (const event of events) {
-          const lines = event.split("\n");
-          const eventLine = lines.find((l) => l.startsWith("event:"));
-          const dataLine = lines.find((l) => l.startsWith("data:"));
-          if (!dataLine) continue;
-          const payload = dataLine.slice(5).trim();
-          if (eventLine?.includes("error")) {
-            try {
-              const parsed = JSON.parse(payload);
-              setError(parsed.error ?? "narration error");
-            } catch {
-              setError("narration error");
-            }
-            continue;
-          }
-          if (eventLine?.includes("done")) continue;
-          try {
-            const parsed = JSON.parse(payload);
-            if (parsed.text) setNarration((prev) => prev + parsed.text);
-          } catch {
-            // ignore malformed chunk
-          }
-        }
-      }
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") setError((err as Error).message);
+      setNarrateLoading(false);
     }
-    setNarrateLoading(false);
-  }, [history, input, planLoading]);
+  }, [history, input, planLoading, result]);
 
+  // ── openInPlanner / sharePlan (unchanged logic) ───────────────────────────
   const openInPlanner = useCallback(() => {
     if (!result) return;
     const archetype = fitnessToArchetype(result.brief.fitness);
     const planWithPace: PlanState = { ...result.planState, paceOverride: archetype };
-    const stored = {
-      version: 1,
-      plan: planWithPace,
-      savedAt: new Date().toISOString(),
-    };
     try {
-      localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(stored));
+      localStorage.setItem(
+        PLAN_STORAGE_KEY,
+        JSON.stringify({ version: 1, plan: planWithPace, savedAt: new Date().toISOString() }),
+      );
     } catch {
       setError("Couldn't save plan to your browser. Try again with cookies/storage enabled.");
       return;
@@ -182,86 +446,6 @@ export default function AIPlanComposer() {
     if (saveAsDefault) setArchetype(archetype);
     router.push("/plan");
   }, [result, router, saveAsDefault, setArchetype]);
-
-  /** Re-run the planner with an explicit brief — bypasses the LLM extractor
-   * so chip edits apply instantly and deterministically. Mirrors submit()'s
-   * shape but uses `briefOverride` against /api/ai/plan, and re-streams the
-   * narration so it matches the new plan. */
-  const applyBriefOverride = useCallback(async (override: TripBrief) => {
-    if (planLoading) return;
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-    setError(null);
-    setNarration("");
-    setPlanLoading(true);
-
-    let planJson: PlanResult | null = null;
-    try {
-      const res = await fetch("/api/ai/plan", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ briefOverride: override }),
-        signal: ac.signal,
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `plan request failed: ${res.status}`);
-      }
-      planJson = (await res.json()) as PlanResult;
-      setResult(planJson);
-      trackEvent("plan_modified", { kind: "brief_chip_edit" });
-    } catch (err) {
-      if ((err as Error).name === "AbortError") return;
-      setError((err as Error).message);
-      setPlanLoading(false);
-      return;
-    }
-    setPlanLoading(false);
-
-    setNarrateLoading(true);
-    try {
-      const res = await fetch("/api/ai/narrate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          planState: planJson.planState,
-          brief: planJson.brief,
-          rationale: planJson.rationale,
-        }),
-        signal: ac.signal,
-      });
-      if (!res.ok || !res.body) throw new Error(`narration failed: ${res.status}`);
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() ?? "";
-        for (const event of events) {
-          const lines = event.split("\n");
-          const eventLine = lines.find((l) => l.startsWith("event:"));
-          const dataLine = lines.find((l) => l.startsWith("data:"));
-          if (!dataLine) continue;
-          const payload = dataLine.slice(5).trim();
-          if (eventLine?.includes("error") || eventLine?.includes("done")) continue;
-          try {
-            const parsed = JSON.parse(payload);
-            if (parsed.text) setNarration((prev) => prev + parsed.text);
-          } catch {
-            // ignore malformed chunk
-          }
-        }
-      }
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") setError((err as Error).message);
-    }
-    setNarrateLoading(false);
-  }, [planLoading]);
 
   const sharePlan = useCallback(async () => {
     if (!result || shareLoading) return;
@@ -287,32 +471,32 @@ export default function AIPlanComposer() {
       try {
         await navigator.clipboard.writeText(url);
         setShareCopied(true);
-      } catch {
-        // clipboard blocked — URL is still rendered for the user to copy manually
-      }
+      } catch { /* clipboard blocked — URL still visible */ }
     } catch (err) {
-      setError((err as Error).message);
+      setError(friendlyError(err));
     }
     setShareLoading(false);
   }, [result, shareLoading]);
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="grid lg:grid-cols-[1fr_1.1fr] gap-6">
-      {/* Composer column */}
+
+      {/* ── Composer column ── */}
       <div className="space-y-4">
         <div className="bg-white rounded-[20px] p-5 shadow-[0_4px_24px_rgba(45,90,61,0.06)]">
           <label className="block text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-2">
-            Describe your walk
+            {result ? "Refine your plan" : "Describe your walk"}
           </label>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
-            }}
-            placeholder={result
-              ? "Refine: 'add a rest day after Painswick' · 'make it cheaper' · 'flip direction'"
-              : "5 days, moderate pace, around £100 a night, pub every night..."}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }}
+            placeholder={
+              result
+                ? "e.g. add a rest day after Painswick · shorten day 3 · make it cheaper"
+                : "5 days, moderate pace, around £100 a night, pub every night..."
+            }
             rows={4}
             className="w-full rounded-xl border border-cream-dark/70 bg-cream/40 px-3.5 py-3 text-[14px] text-ink placeholder:text-stone-light focus:outline-none focus:border-forest-light focus:bg-white resize-none"
           />
@@ -323,7 +507,7 @@ export default function AIPlanComposer() {
               disabled={planLoading || !input.trim()}
               className="px-5 py-2.5 rounded-full bg-forest text-white text-[13px] font-semibold tracking-wide hover:bg-forest-deep disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {planLoading ? "Planning…" : result ? "Refine plan" : "Plan my trip"}
+              {planLoading ? (result ? "Checking…" : "Planning…") : result ? "Refine plan" : "Plan my trip"}
             </button>
           </div>
         </div>
@@ -345,10 +529,11 @@ export default function AIPlanComposer() {
           </div>
         )}
 
-        {history.length > 0 && (
+        {/* Conversation — filter out the empty placeholder while narration streams */}
+        {history.some((m) => m.content) && (
           <div className="space-y-2">
             <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-stone">Conversation</div>
-            {history.map((m, i) => (
+            {history.filter((m) => m.content).map((m, i) => (
               <div
                 key={i}
                 className={`rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed ${
@@ -370,8 +555,26 @@ export default function AIPlanComposer() {
         )}
       </div>
 
-      {/* Result column */}
-      <div className="space-y-4">
+      {/* ── Result column ── */}
+      <div ref={resultColRef} className="space-y-4">
+
+        {/* Phase progress indicator */}
+        {(planLoading || narrateLoading) && (
+          <div className="flex items-center gap-2.5 px-1">
+            <StepIndicator
+              active={planLoading}
+              done={!planLoading && !!result}
+              label="Reading your request"
+            />
+            <span className="text-cream-dark/60 text-[12px]">›</span>
+            <StepIndicator
+              active={narrateLoading}
+              done={!!result && !narrateLoading && !!narration}
+              label="Writing up your plan"
+            />
+          </div>
+        )}
+
         {!result && !planLoading && (
           <div className="rounded-[20px] border-2 border-dashed border-cream-dark/60 p-10 text-center text-stone">
             <div className="text-[13px]">Your itinerary will appear here.</div>
@@ -401,17 +604,32 @@ export default function AIPlanComposer() {
               isReapplying={planLoading || narrateLoading}
             />
             <PlanCards plan={result.planState} />
+
+            {pendingMutation && (
+              <MutationCard
+                pending={pendingMutation}
+                onApply={applyPendingMutation}
+                onDiscard={() => setPendingMutation(null)}
+              />
+            )}
+
             <RationalePanel
               narration={narration}
               loading={narrateLoading}
               rationale={result.rationale}
             />
+
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="text-[12px] text-stone min-w-0 flex-1">
                 {shareUrl ? (
                   <span className="flex items-center gap-2 flex-wrap">
                     <span className="text-forest-deep">{shareCopied ? "✓ Link copied" : "Share link"}:</span>
-                    <a href={shareUrl} className="text-tertiary hover:underline truncate" target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={shareUrl}
+                      className="text-tertiary hover:underline truncate"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       {shareUrl.replace(/^https?:\/\//, "")}
                     </a>
                   </span>
@@ -439,12 +657,39 @@ export default function AIPlanComposer() {
   );
 }
 
-type EditField = "days" | "direction" | "tier" | "dog" | null;
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StepIndicator({
+  active,
+  done,
+  label,
+}: {
+  active: boolean;
+  done: boolean;
+  label: string;
+}) {
+  return (
+    <span className="flex items-center gap-1.5 text-[12px]">
+      {done ? (
+        <span className="w-3.5 h-3.5 rounded-full bg-forest-light/40 flex items-center justify-center text-[8px] text-forest-deep leading-none">
+          ✓
+        </span>
+      ) : active ? (
+        <span className="w-2 h-2 rounded-full bg-forest animate-pulse" />
+      ) : (
+        <span className="w-2 h-2 rounded-full bg-cream-dark/50" />
+      )}
+      <span className={active ? "text-ink" : done ? "text-stone" : "text-stone-light"}>{label}</span>
+    </span>
+  );
+}
+
+type EditField = "days" | "direction" | "tier" | "dog" | "fitness" | null;
 
 const TIER_OPTIONS: { value: NonNullable<TripBrief["budgetTier"]>; label: string }[] = [
-  { value: "shoestring", label: "Shoestring" },
-  { value: "comfort", label: "Comfort" },
-  { value: "treat-yourself", label: "Treat" },
+  { value: "shoestring",    label: "Shoestring" },
+  { value: "comfort",       label: "Comfort"    },
+  { value: "treat-yourself", label: "Treat"     },
 ];
 
 function BriefSummary({
@@ -463,40 +708,47 @@ function BriefSummary({
   isReapplying: boolean;
 }) {
   const archetype = fitnessToArchetype(brief.fitness);
-  // Local working copy of the brief — edits accumulate here and apply only
-  // when the user clicks the explicit "Apply changes" button.
-  const [pending, setPending] = useState<TripBrief>(brief);
-  const [editing, setEditing] = useState<EditField>(null);
+  const [pending,  setPending]  = useState<TripBrief>(brief);
+  const [editing,  setEditing]  = useState<EditField>(null);
+  const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
-  // Reset working copy whenever the upstream brief changes (e.g. after the
-  // user applies a change and a new plan lands).
   useEffect(() => {
     setPending(brief);
     setEditing(null);
+    setDismissed(new Set());
   }, [brief]);
 
-  const dirty = useMemo(() => {
-    return (
-      pending.days !== brief.days ||
-      pending.direction !== brief.direction ||
-      pending.budgetTier !== brief.budgetTier ||
-      pending.dogFriendly !== brief.dogFriendly
-    );
-  }, [pending, brief]);
+  const dirty = useMemo(() => (
+    pending.days           !== brief.days           ||
+    pending.direction      !== brief.direction      ||
+    pending.budgetTier     !== brief.budgetTier     ||
+    pending.dogFriendly    !== brief.dogFriendly    ||
+    pending.fitness        !== brief.fitness        ||
+    JSON.stringify(pending.mustVisit)      !== JSON.stringify(brief.mustVisit)      ||
+    JSON.stringify(pending.avoidVillages)  !== JSON.stringify(brief.avoidVillages)
+  ), [pending, brief]);
 
-  const apply = () => {
-    onApplyBrief(pending);
+  const addVillage = (field: "mustVisit" | "avoidVillages", name: string) => {
+    if (!pending[field].includes(name))
+      setPending({ ...pending, [field]: [...pending[field], name] });
   };
-  const reset = () => {
-    setPending(brief);
-    setEditing(null);
-  };
+  const removeVillage = (field: "mustVisit" | "avoidVillages", name: string) =>
+    setPending({ ...pending, [field]: pending[field].filter((v) => v !== name) });
+
+  const apply = () => onApplyBrief(pending);
+  const reset = () => { setPending(brief); setEditing(null); };
+
+  const undismissed = brief.ambiguities
+    .map((text, i) => ({ text, i }))
+    .filter(({ i }) => !dismissed.has(i));
 
   return (
     <div className="bg-cream/60 rounded-[20px] p-4">
       <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-stone mb-2">
         What I heard <span className="text-stone-light normal-case tracking-normal">— tap a chip to change it</span>
       </div>
+
+      {/* Chips row */}
       <div className="flex flex-wrap gap-1.5 mb-2.5">
         <EditableChip
           label={pending.days ? `${pending.days} days` : "any days"}
@@ -509,6 +761,11 @@ function BriefSummary({
           onClick={() => setEditing(editing === "direction" ? null : "direction")}
         />
         <EditableChip
+          label={FITNESS_LABELS[pending.fitness]}
+          active={editing === "fitness"}
+          onClick={() => setEditing(editing === "fitness" ? null : "fitness")}
+        />
+        <EditableChip
           label={pending.budgetTier ?? "any tier"}
           active={editing === "tier"}
           onClick={() => setEditing(editing === "tier" ? null : "tier")}
@@ -517,32 +774,25 @@ function BriefSummary({
           label={pending.dogFriendly ? "dog friendly" : "+ dog friendly"}
           active={editing === "dog"}
           activeColor={pending.dogFriendly ? undefined : "muted"}
-          onClick={() => {
-            // Toggle directly — no separate editor needed for a boolean
-            setPending({ ...pending, dogFriendly: !pending.dogFriendly });
-            setEditing(null);
-          }}
+          onClick={() => { setPending({ ...pending, dogFriendly: !pending.dogFriendly }); setEditing(null); }}
         />
         {pending.diningPreference !== "any" && (
           <span className="text-[11px] bg-white/80 text-forest-deep rounded-full px-2.5 py-1">
             {pending.diningPreference}
           </span>
         )}
-        {pending.mustVisit.length > 0 && (
-          <span className="text-[11px] bg-white/80 text-forest-deep rounded-full px-2.5 py-1">
-            must: {pending.mustVisit.join(", ")}
-          </span>
-        )}
       </div>
 
-      {/* Inline editor — only the active chip's controls render */}
+      {/* Inline editors */}
       {editing === "days" && (
         <ChipEditor>
           <button
             onClick={() => setPending({ ...pending, days: Math.max(3, (pending.days ?? 7) - 1) })}
             className="w-8 h-8 rounded-full bg-white border border-cream-dark text-forest font-semibold hover:bg-forest hover:text-white transition-colors"
           >−</button>
-          <span className="text-[18px] font-semibold text-ink tabular-nums w-12 text-center">{pending.days ?? 7}</span>
+          <span className="text-[18px] font-semibold text-ink tabular-nums w-12 text-center">
+            {pending.days ?? 7}
+          </span>
           <button
             onClick={() => setPending({ ...pending, days: Math.min(14, (pending.days ?? 7) + 1) })}
             className="w-8 h-8 rounded-full bg-white border border-cream-dark text-forest font-semibold hover:bg-forest hover:text-white transition-colors"
@@ -550,6 +800,7 @@ function BriefSummary({
           <span className="text-[11px] text-stone-light">3–14 days</span>
         </ChipEditor>
       )}
+
       {editing === "direction" && (
         <ChipEditor>
           {([
@@ -570,6 +821,25 @@ function BriefSummary({
           ))}
         </ChipEditor>
       )}
+
+      {editing === "fitness" && (
+        <ChipEditor>
+          {(["relaxed", "moderate", "fit", "very-fit"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => { setPending({ ...pending, fitness: f }); setEditing(null); }}
+              className={`text-[12px] px-3 py-1.5 rounded-full transition-colors ${
+                pending.fitness === f
+                  ? "bg-forest text-white"
+                  : "bg-white border border-cream-dark text-stone hover:border-forest-light"
+              }`}
+            >
+              {FITNESS_LABELS[f]}
+            </button>
+          ))}
+        </ChipEditor>
+      )}
+
       {editing === "tier" && (
         <ChipEditor>
           {TIER_OPTIONS.map((opt) => (
@@ -596,6 +866,53 @@ function BriefSummary({
         </ChipEditor>
       )}
 
+      {/* Must-visit villages */}
+      <div className="flex flex-wrap items-center gap-1.5 mt-1.5 mb-1">
+        <span className="text-[10px] uppercase tracking-wider text-stone-light shrink-0">must visit</span>
+        {pending.mustVisit.map((v) => (
+          <span
+            key={v}
+            className="inline-flex items-center gap-1 text-[11px] bg-forest/10 text-forest-deep rounded-full px-2.5 py-0.5"
+          >
+            {v}
+            <button
+              onClick={() => removeVillage("mustVisit", v)}
+              aria-label={`Remove ${v}`}
+              className="text-stone-light hover:text-terracotta leading-none"
+            >×</button>
+          </span>
+        ))}
+        <AddVillageInput
+          listId="village-datalist-must"
+          exclude={pending.mustVisit}
+          onAdd={(v) => addVillage("mustVisit", v)}
+        />
+      </div>
+
+      {/* Avoid villages */}
+      <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-2.5">
+        <span className="text-[10px] uppercase tracking-wider text-stone-light shrink-0">avoid</span>
+        {pending.avoidVillages.map((v) => (
+          <span
+            key={v}
+            className="inline-flex items-center gap-1 text-[11px] bg-terracotta/10 text-terracotta rounded-full px-2.5 py-0.5"
+          >
+            {v}
+            <button
+              onClick={() => removeVillage("avoidVillages", v)}
+              aria-label={`Remove ${v}`}
+              className="text-terracotta/60 hover:text-terracotta leading-none"
+            >×</button>
+          </span>
+        ))}
+        <AddVillageInput
+          listId="village-datalist-avoid"
+          exclude={pending.avoidVillages}
+          onAdd={(v) => addVillage("avoidVillages", v)}
+        />
+      </div>
+
+      {/* Apply / cancel */}
       {dirty && (
         <div className="flex items-center gap-2 mb-2">
           <button
@@ -615,6 +932,7 @@ function BriefSummary({
         </div>
       )}
 
+      {/* Pace row */}
       <div className="flex items-center gap-2 flex-wrap rounded-xl bg-white/70 px-3 py-2 mb-2">
         <span className="text-[11px] uppercase tracking-wider text-stone">Pace</span>
         <span className="text-[12px] font-semibold text-forest-deep capitalize">{archetype}</span>
@@ -629,24 +947,87 @@ function BriefSummary({
           Save as my default
         </label>
       </div>
-      {brief.ambiguities.length > 0 && (
-        <details className="text-[12px] text-stone mt-2">
-          <summary className="cursor-pointer text-stone hover:text-forest">
-            {brief.ambiguities.length} assumption{brief.ambiguities.length === 1 ? "" : "s"} — confirm?
-          </summary>
-          <ul className="mt-2 ml-4 list-disc space-y-1">
-            {brief.ambiguities.map((a, i) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
-        </details>
+
+      {/* Ambiguities — always-visible callout with individual dismiss */}
+      {undismissed.length > 0 && (
+        <div className="mt-2 rounded-xl bg-amber-warm/8 border border-amber-warm/25 px-3 py-2.5">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-amber-warm mb-1.5">
+            Assumptions — correct if wrong
+          </div>
+          {undismissed.map(({ text, i }) => (
+            <div key={i} className="flex items-start gap-2 text-[12px] text-stone py-0.5">
+              <span className="text-amber-warm mt-0.5 shrink-0 select-none">·</span>
+              <span className="flex-1">{text}</span>
+              <button
+                onClick={() => setDismissed((s) => new Set([...s, i]))}
+                aria-label="Dismiss assumption"
+                className="text-stone-light hover:text-stone shrink-0 leading-none"
+              >×</button>
+            </div>
+          ))}
+        </div>
       )}
+
       {validationNotes.length > 0 && (
         <div className="mt-2 text-[12px] text-amber-warm">
           Couldn&apos;t match: {validationNotes.join("; ")}
         </div>
       )}
     </div>
+  );
+}
+
+function AddVillageInput({
+  listId,
+  onAdd,
+  exclude,
+}: {
+  listId: string;
+  onAdd: (name: string) => void;
+  exclude: string[];
+}) {
+  const [val, setVal]         = useState("");
+  const [showErr, setShowErr] = useState(false);
+
+  const commit = () => {
+    const trimmed = val.trim();
+    if (!trimmed) return;
+    const found = VILLAGE_NAMES.find((n) => n.toLowerCase() === trimmed.toLowerCase());
+    if (found && !exclude.includes(found)) {
+      onAdd(found);
+      setVal("");
+      setShowErr(false);
+    } else {
+      setShowErr(true);
+    }
+  };
+
+  return (
+    <span className="inline-flex flex-col">
+      <span className="inline-flex items-center">
+        <input
+          list={listId}
+          value={val}
+          onChange={(e) => { setVal(e.target.value); setShowErr(false); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+          onBlur={commit}
+          placeholder="+ village"
+          className={`text-[11px] w-24 rounded-full border px-2.5 py-0.5 bg-white focus:outline-none transition-colors ${
+            showErr
+              ? "border-terracotta text-terracotta"
+              : "border-cream-dark/70 text-stone focus:border-forest-light"
+          }`}
+        />
+      </span>
+      {showErr && (
+        <span className="text-[10px] text-terracotta mt-0.5 pl-1">not on the trail</span>
+      )}
+      <datalist id={listId}>
+        {VILLAGE_NAMES.filter((n) => !exclude.includes(n)).map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+    </span>
   );
 }
 
@@ -662,22 +1043,51 @@ function EditableChip({
   activeColor?: "muted";
 }) {
   const base = "text-[11px] rounded-full px-2.5 py-1 transition-colors cursor-pointer";
-  const cls = active
+  const cls  = active
     ? "bg-forest text-white"
     : activeColor === "muted"
       ? "bg-white/60 text-stone hover:text-forest-deep hover:bg-white"
       : "bg-white/80 text-forest-deep hover:bg-white hover:ring-1 hover:ring-forest/20";
-  return (
-    <button onClick={onClick} className={`${base} ${cls}`}>
-      {label}
-    </button>
-  );
+  return <button onClick={onClick} className={`${base} ${cls}`}>{label}</button>;
 }
 
 function ChipEditor({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 flex-wrap rounded-xl bg-white/80 px-3 py-2.5 mb-2.5">
       {children}
+    </div>
+  );
+}
+
+function MutationCard({
+  pending,
+  onApply,
+  onDiscard,
+}: {
+  pending: { mutation: ReplanMutation; summary: string };
+  onApply: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="bg-white rounded-[20px] p-5 border border-tertiary/20 shadow-[0_2px_12px_rgba(84,22,0,0.06)]">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-tertiary mb-1.5">
+        Proposed change
+      </div>
+      <p className="text-[14px] text-ink mb-4">{pending.summary}</p>
+      <div className="flex gap-2">
+        <button
+          onClick={onApply}
+          className="px-4 py-2 rounded-full bg-forest text-white text-[13px] font-semibold hover:bg-forest-deep transition-colors"
+        >
+          Apply
+        </button>
+        <button
+          onClick={onDiscard}
+          className="px-4 py-2 rounded-full border border-cream-dark text-stone text-[13px] font-semibold hover:bg-cream transition-colors"
+        >
+          Discard
+        </button>
+      </div>
     </div>
   );
 }
@@ -689,22 +1099,20 @@ function PlanCards({ plan }: { plan: PlanState }) {
         Itinerary preview
       </div>
       <ul className="divide-y divide-cream-dark/50">
-        {plan.stops.map((s) => (
-          <DayRow key={s.day} stop={s} />
-        ))}
+        {plan.stops.map((s) => <DayRow key={s.day} stop={s} />)}
       </ul>
     </div>
   );
 }
 
 const DIFF_BG: Record<DayStop["difficulty"], string> = {
-  easy: "bg-forest-light/15 text-forest-deep",
-  moderate: "bg-amber-warm/15 text-amber-warm",
+  easy:      "bg-forest-light/15 text-forest-deep",
+  moderate:  "bg-amber-warm/15 text-amber-warm",
   strenuous: "bg-terracotta/15 text-terracotta",
 };
 
 function DayRow({ stop }: { stop: DayStop }) {
-  const acc = stop.accommodation;
+  const acc          = stop.accommodation;
   const notDogFriendly = acc?.relaxedConstraints?.includes("dog-friendly");
   return (
     <li className="px-4 py-3 flex items-start gap-3">
@@ -788,9 +1196,7 @@ function RationalePanel({
             {rationale.unmet.length} unmet constraint{rationale.unmet.length === 1 ? "" : "s"}
           </summary>
           <ul className="mt-2 ml-4 list-disc space-y-1">
-            {rationale.unmet.map((u, i) => (
-              <li key={i}>{u}</li>
-            ))}
+            {rationale.unmet.map((u, i) => <li key={i}>{u}</li>)}
           </ul>
         </details>
       )}

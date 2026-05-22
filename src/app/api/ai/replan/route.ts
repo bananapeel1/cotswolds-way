@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { replanFlow, ReplanInputSchema } from "@/lib/ai/flows/replan";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   let parsed: ReturnType<typeof ReplanInputSchema.parse>;

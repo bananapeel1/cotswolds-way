@@ -10,9 +10,9 @@ export const healthFlow = ai.defineFlow(
     outputSchema: z.object({ reply: z.string(), model: z.string() }),
   },
   async ({ name }) => {
-    const { text } = await generate(
-      `In one short sentence, greet a Cotswold Way ${name} and mention one thing the trail is famous for.`,
-    );
+    const { text } = await generate({
+      prompt: `In one short sentence, greet a Cotswold Way ${name} and mention one thing the trail is famous for.`,
+    });
     return { reply: text, model: "gemini-2.5-flash" };
   },
 );

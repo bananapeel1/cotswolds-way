@@ -13,7 +13,7 @@ import propertiesData from "@/data/properties.json";
 import type { Property } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const MessagesSchema = z
   .array(
