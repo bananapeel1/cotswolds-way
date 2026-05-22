@@ -88,18 +88,33 @@ export async function findCached(cacheKey: string): Promise<LoopResult | null> {
   }
   if (!data || data.length === 0) return null;
   const row = data[0];
+  // GraphHopper round_trip always returns a LineString; cast is safe.
+  const geometry = JSON.parse(row.geojson) as GeoJSON.LineString;
+
+  // When midpoint_poi_id is -1 (synthetic) or null, the SQL LEFT JOIN on pois
+  // returns NULL for all poi columns. Fall back to computing the midpoint from
+  // the geometry so the map marker renders correctly.
+  let midpointLng: number = row.midpoint_lng ?? 0;
+  let midpointLat: number = row.midpoint_lat ?? 0;
+  if (!midpointLng || !midpointLat) {
+    const coords = geometry.coordinates as [number, number][];
+    const mid = routeMidpointCoord(coords);
+    midpointLng = mid[0];
+    midpointLat = mid[1];
+  }
+
   return {
     cacheKey: row.cache_key,
-    geometry: JSON.parse(row.geojson),
+    geometry,
     actualKm: Number(row.actual_km),
     ascentM: row.ascent_m,
     durationMin: row.duration_min,
     midpointPoi: {
       id: row.midpoint_poi_id ?? -1,
-      name: row.midpoint_name ?? "(unknown)",
-      type: row.midpoint_type ?? "unknown",
-      lng: row.midpoint_lng ?? 0,
-      lat: row.midpoint_lat ?? 0,
+      name: row.midpoint_name ?? "Route midpoint",
+      type: row.midpoint_type ?? "viewpoint",
+      lng: midpointLng,
+      lat: midpointLat,
       scenicScore: row.midpoint_scenic_score ?? 5,
       terrainClass: row.midpoint_terrain_class,
       isLunchStop: row.midpoint_is_lunch_stop ?? false,

@@ -48,8 +48,10 @@ export async function POST(req: NextRequest) {
         theme: body.theme as Theme,
         startLabel: body.startLabel,
       });
-      // Fire-and-forget persistence — don't block response on the DB write.
-      setNarrative(loop.cacheKey, narrative).catch((err) => {
+      // Await the DB write — adds ~50ms but ensures the narrative is
+      // persisted before we respond (fire-and-forget was racing with
+      // saveRoute and losing when the Next.js context tore down first).
+      await setNarrative(loop.cacheKey, narrative).catch((err) => {
         console.warn("[/api/routes/generate] failed to persist narrative:", err);
       });
     } catch (err) {
