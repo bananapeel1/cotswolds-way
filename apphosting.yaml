@@ -42,6 +42,16 @@ env:
     availability:
       - RUNTIME
 
+  # GraphHopper routing service URL (private Cloud Run service). The
+  # /api/routes/generate endpoint calls this to produce circular walks.
+  # Set the value via:
+  #   firebase apphosting:secrets:set GRAPHHOPPER_URL
+  # Value format: https://cotswolds-graphhopper-<hash>-nw.a.run.app  (no trailing slash)
+  - variable: GRAPHHOPPER_URL
+    secret: GRAPHHOPPER_URL
+    availability:
+      - RUNTIME
+
   # Booking.com integration disabled until credentials are issued.
   # When ready, add BOOKING_API_TOKEN and BOOKING_AFFILIATE_ID as
   # secrets and BOOKING_API_BASE_URL as a value here.
