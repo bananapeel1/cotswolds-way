@@ -1,0 +1,10 @@
+# The dev graph cache is rebuilt by the builder stage from the .pbf, so
+# we never want to ship the host's copy into the image context.
+graph-cache/
+
+# Dev-only config — the image uses config.prod.yml.
+config.yml
+
+# Noise.
+*.log
+.DS_Store

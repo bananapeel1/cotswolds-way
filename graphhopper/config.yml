@@ -1,0 +1,40 @@
+# GraphHopper v10 config for the Cotswolds walking platform.
+#
+# Flex mode (no CH/LM preproc): supports all algorithms including round_trip.
+# Query time ~500ms-2s for AONB-scale graph — acceptable for a dev preview.
+# Can add CH/LM back for point-to-point profiles once round_trip is stable.
+
+graphhopper:
+  datareader.file: data/cotswolds-aonb.osm.pbf
+  graph.location: graph-cache
+
+  # Encoded values required by foot.json (includes hike_rating, mtb_rating).
+  graph.encoded_values: road_class,surface,foot_access,foot_average_speed,foot_priority,hike_rating,mtb_rating
+
+  profiles:
+    - name: foot
+      custom_model_files: [foot.json]
+    - name: hike
+      custom_model_files: [foot.json]
+
+  # No CH or LM preproc — flex mode enables round_trip + alternative_route.
+  # routing.max_visited_nodes limits runaway queries on flex.
+  routing.max_visited_nodes: 1000000
+
+  # For pedestrian routing keep paths/footways; ignore motorised-only highways.
+  import.osm.ignored_highways: motorway,trunk
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: localhost
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: localhost
+
+logging:
+  level: INFO
+  loggers:
+    "com.graphhopper": INFO

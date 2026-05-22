@@ -35,7 +35,19 @@ A trail-native accommodation booking platform for the Cotswold Way (102-mile Nat
   - First run builds graph cache (~60s). Subsequent starts reuse cache (~10s).
   - Binds to `http://127.0.0.1:8989`. Set `GRAPHHOPPER_URL=http://127.0.0.1:8989` in `.env.local`.
   - Data file: `graphhopper/data/cotswolds-aonb.osm.pbf` (64MB Cotswolds clip, not committed).
-  - The walks feature (`/api/routes/generate`, `/walks/preview`) returns 500 if GH is not running.
+  - The walks feature (`/api/routes/generate`, `/walks/preview`) pre-flight-pings GH; when it's not running the API returns a structured 503 `service_degraded` (was 500 pre-Milestone A).
+
+## Production services
+- **GraphHopper on Cloud Run** (region `europe-west2` / London).
+  - Deploy from project root: `gcloud builds submit graphhopper --config=graphhopper/cloudbuild.yaml`
+  - Image is built in two stages (`graphhopper/Dockerfile`): builder runs `java -jar graphhopper-web.jar import config.yml` against `data/cotswolds-aonb.osm.pbf` to produce `graph-cache/`; runtime ships JRE + jar + pre-built cache only. Cold-start is ~5s (JVM warmup) instead of ~60s (graph build).
+  - Runs at `min-instances=1, max=3, 2 vCPU, 4 GiB, port 8989, concurrency=20, --no-allow-unauthenticated`.
+  - Service-to-service auth: the Next.js runtime SA needs `roles/run.invoker` on the `cotswolds-graphhopper` Cloud Run service. The fetch call sends an identity token automatically when running on Firebase App Hosting / GCP.
+  - Prod env var: `GRAPHHOPPER_URL` set to the Cloud Run service URL (no trailing slash). Stored in Firebase Secret Manager.
+- **Rebuilding the graph after an OSM update**:
+  1. Replace `graphhopper/data/cotswolds-aonb.osm.pbf` with the new clip (see `scripts/ingest-osm-aonb.sh`).
+  2. Verify locally: `rm -rf graphhopper/graph-cache && cd graphhopper && /opt/homebrew/opt/openjdk@21/bin/java -Xmx4g -jar graphhopper-web.jar server config.yml`
+  3. Re-deploy: `gcloud builds submit graphhopper --config=graphhopper/cloudbuild.yaml`. Cloud Build rebuilds the graph inside the image so the runtime container starts with a fresh cache.
 
 ## Conventions
 - Components in `src/components/`

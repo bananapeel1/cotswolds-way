@@ -1,0 +1,55 @@
+# Cloud Build pipeline for the GraphHopper routing engine.
+#
+# Trigger manually for now (deploys are infrequent — only on new OSM extract,
+# new graph encoded values, or a GH version bump). Wire to a GitHub trigger
+# when we add a graphhopper/CHANGES.md heartbeat.
+#
+# Build context: this directory (graphhopper/). Run from the project root with:
+#   gcloud builds submit graphhopper --config=graphhopper/cloudbuild.yaml
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:$SHORT_SHA
+      - --tag=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - cotswolds-graphhopper
+      - --image=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:$SHORT_SHA
+      - --region=europe-west2
+      - --port=8989
+      - --memory=4Gi
+      - --cpu=2
+      - --min-instances=1
+      - --max-instances=3
+      - --timeout=60s
+      - --concurrency=20
+      # No public traffic — the Next.js app calls it via service-to-service
+      # auth (the Firebase App Hosting service account is granted invoker).
+      - --no-allow-unauthenticated
+
+# Big OSM imports during the build stage benefit from more RAM.
+options:
+  machineType: E2_HIGHCPU_8
+
+# Graph build inside the Docker stage can take ~10 min on a cold cache.
+timeout: 1800s
+
+images:
+  - europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:$SHORT_SHA
+  - europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:latest

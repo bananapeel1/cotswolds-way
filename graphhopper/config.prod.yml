@@ -1,0 +1,39 @@
+# GraphHopper v10 — production config for Cloud Run.
+#
+# Differences from dev (config.yml):
+#   - bind_host: 0.0.0.0 (Cloud Run requires binding to all interfaces)
+#   - no admin connector (reduces attack surface; we don't need /metrics in prod)
+#   - INFO logging only (DEBUG fills Cloud Logging quota fast)
+
+graphhopper:
+  datareader.file: data/cotswolds-aonb.osm.pbf
+  graph.location: graph-cache
+
+  # Encoded values required by foot.json (includes hike_rating, mtb_rating).
+  # Must match the dev config — graph-cache is built per encoded-values set.
+  graph.encoded_values: road_class,surface,foot_access,foot_average_speed,foot_priority,hike_rating,mtb_rating
+
+  profiles:
+    - name: foot
+      custom_model_files: [foot.json]
+    - name: hike
+      custom_model_files: [foot.json]
+
+  # Flex mode (no CH/LM preproc): required for round_trip + alternative_route.
+  routing.max_visited_nodes: 1000000
+
+  # Pedestrian routing — drop motorised-only highways at import time.
+  import.osm.ignored_highways: motorway,trunk
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 0.0.0.0
+  # No admin connector — we don't expose /admin or /metrics from Cloud Run.
+  # Cloud Run's own health probe hits /health on the application connector.
+
+logging:
+  level: INFO
+  loggers:
+    "com.graphhopper": INFO

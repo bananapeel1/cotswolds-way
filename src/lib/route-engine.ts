@@ -6,6 +6,8 @@
  *   generateLoop(req)     — full algorithm, no caching. Slow.
  *   scoreLoop(loop, req)  — scoring function (exported for inspection/testing).
  *   buildCacheKey(req)    — deterministic cache key for a request.
+ *   pingGraphHopper()     — cheap liveness probe; lets callers distinguish
+ *                           "GH unreachable" from "no loop in this area".
  *
  * Routing backend: GraphHopper (local HTTP server, `algorithm=round_trip`).
  * Set GRAPHHOPPER_URL env var to override the default http://localhost:8989.
@@ -23,6 +25,23 @@
 import { getAdminClient } from "@/lib/supabase-admin";
 
 const GH_BASE = (process.env.GRAPHHOPPER_URL ?? "http://localhost:8989").replace(/\/$/, "");
+
+/**
+ * Lightweight liveness probe against GraphHopper. Lets the API layer return
+ * a structured 503 when GH is down rather than waiting for findOrGenerate to
+ * fail opaquely. Returns true on 200, false on any non-2xx, network error,
+ * or timeout. Never throws.
+ */
+export async function pingGraphHopper(timeoutMs = 1500): Promise<boolean> {
+  try {
+    const res = await fetch(`${GH_BASE}/health`, {
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

@@ -1,0 +1,20 @@
+# Binary artefacts — kept out of git because (a) they're big and (b) they're
+# trivially regenerated. See README.md in this directory for download/build
+# instructions.
+
+# The GraphHopper Dropwizard server fat jar (~46 MB).
+# Download from https://github.com/graphhopper/graphhopper/releases (v10.x).
+graphhopper-web.jar
+
+# OSM extracts (typically 50-200 MB) — produced by scripts/ingest-osm-aonb.sh
+# from the Geofabrik England download.
+data/*.osm.pbf
+data/*.osm
+
+# Pre-built routing graph (~90 MB). Rebuilt automatically by `import` mode in
+# the Dockerfile builder stage, or locally on first `server` invocation.
+graph-cache/
+
+# Runtime noise.
+*.log
+.DS_Store

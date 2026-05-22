@@ -5,7 +5,10 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 interface LoopMapProps {
-  geometry: GeoJSON.LineString | GeoJSON.MultiLineString;
+  // GraphHopper round_trip always returns a single LineString. We deliberately
+  // narrow here so callers don't carry a stale union and we keep the helpers
+  // below from branching on a case the engine never produces.
+  geometry: GeoJSON.LineString;
   start: { lng: number; lat: number };
   midpoint: { lng: number; lat: number; name: string; type: string };
 }
@@ -86,7 +89,7 @@ export default function LoopMap({ geometry, start, midpoint }: LoopMapProps) {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function drawRoute(map: mapboxgl.Map, geom: GeoJSON.LineString | GeoJSON.MultiLineString) {
+function drawRoute(map: mapboxgl.Map, geom: GeoJSON.LineString) {
   const data: GeoJSON.Feature = {
     type: "Feature",
     properties: {},
@@ -113,11 +116,8 @@ function drawRoute(map: mapboxgl.Map, geom: GeoJSON.LineString | GeoJSON.MultiLi
   }
 }
 
-function fitToGeometry(map: mapboxgl.Map, geom: GeoJSON.LineString | GeoJSON.MultiLineString) {
-  const coords: [number, number][] =
-    geom.type === "LineString"
-      ? (geom.coordinates as [number, number][])
-      : (geom.coordinates as [number, number][][]).flat();
+function fitToGeometry(map: mapboxgl.Map, geom: GeoJSON.LineString) {
+  const coords = geom.coordinates as [number, number][];
   if (coords.length < 2) return;
   const bounds = coords.reduce(
     (b, c) => b.extend(c as mapboxgl.LngLatLike),

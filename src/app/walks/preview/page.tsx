@@ -22,7 +22,9 @@ interface MidpointPoi {
 interface RouteResponse {
   cacheKey: string;
   cached: boolean;
-  geometry: GeoJSON.LineString | GeoJSON.MultiLineString;
+  // The server contract is LineString — see route-engine.ts findCached/run.
+  // Keep the client type in lockstep so LoopMap doesn't need to branch.
+  geometry: GeoJSON.LineString;
   actualKm: number;
   ascentM: number;
   durationMin: number;
