@@ -8,6 +8,7 @@ import {
   type LoopResult,
   type Theme,
 } from "@/lib/route-engine";
+import { isInsideCotswolds } from "@/lib/aonb";
 import { narrateRoute } from "@/lib/ai/flows/narrate-route";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,28 @@ export async function POST(req: NextRequest) {
     });
     return Response.json(
       { error: `invalid request: ${message}` },
+      { status: 400 },
+    );
+  }
+
+  // ─── AONB bbox guard ──────────────────────────────────────────────────────
+  // Reject obviously out-of-scope starts before doing any expensive work.
+  // The bbox is generous (includes a margin); precise polygon checking is a
+  // Milestone D improvement.
+  if (!isInsideCotswolds(body.lat, body.lng)) {
+    logMetric({
+      outcome: "outside_aonb",
+      lat: body.lat.toFixed(4),
+      lng: body.lng.toFixed(4),
+      total_ms: Date.now() - t0,
+      engine_version: ENGINE_VERSION,
+    });
+    return Response.json(
+      {
+        error: "outside_aonb",
+        message:
+          "Start point is outside the Cotswolds AONB. Try a village inside the area — Stow-on-the-Wold, Painswick, Chipping Campden, or Bourton-on-the-Water are good starting points.",
+      },
       { status: 400 },
     );
   }
