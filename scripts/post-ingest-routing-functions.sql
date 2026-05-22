@@ -1,6 +1,10 @@
 -- Routing helper SQL functions — applied AFTER osm2pgrouting has populated
 -- the `ways` and `ways_vertices_pgr` tables (see scripts/ingest-osm-aonb.sh).
 -- Apply with: psql "$SUPABASE_DB_URL" -f scripts/post-ingest-routing-functions.sql
+--
+-- Schema notes: osm2pgrouting v3 names the primary key `id` (not `gid`) and
+-- the geometry column `geom` (not `the_geom`). This file is written against
+-- the v3 schema.
 
 -- Find the nearest routing vertex to an arbitrary lng/lat point. Used to
 -- snap the start location to the path graph before invoking pgr_dijkstra.
@@ -11,7 +15,7 @@ STABLE
 AS $$
   SELECT id
   FROM ways_vertices_pgr
-  ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)
+  ORDER BY geom <-> ST_SetSRID(ST_MakePoint(p_lng, p_lat), 4326)
   LIMIT 1;
 $$;
 
@@ -36,7 +40,7 @@ AS $$
   WITH path AS (
     SELECT seq, edge
     FROM pgr_dijkstra(
-      'SELECT gid AS id, source, target, cost_off_road AS cost, reverse_cost_off_road AS reverse_cost FROM ways',
+      'SELECT id, source, target, cost_off_road AS cost, reverse_cost_off_road AS reverse_cost FROM ways',
       start_vid, end_vid, directed := false
     )
     WHERE edge != -1
@@ -44,20 +48,20 @@ AS $$
   joined AS (
     SELECT
       p.seq,
-      w.the_geom,
-      ST_Length(w.the_geom::geography) AS edge_m,
+      w.geom,
+      ST_Length(w.geom::geography) AS edge_m,
       -- Treat anything with cost_off_road > 2x raw length as road.
       -- See mapconfig.xml — footpath/bridleway priority is 1.0, residential
       -- is 3.0, so the cost-to-length ratio cleanly separates them.
-      CASE WHEN w.cost_off_road > w.length_m * 2 THEN ST_Length(w.the_geom::geography) ELSE 0 END AS road_m,
-      w.gid
-    FROM path p JOIN ways w ON w.gid = p.edge
+      CASE WHEN w.cost_off_road > w.length_m * 2 THEN ST_Length(w.geom::geography) ELSE 0 END AS road_m,
+      w.id AS edge_id
+    FROM path p JOIN ways w ON w.id = p.edge
   )
   SELECT
-    ST_AsGeoJSON(ST_LineMerge(ST_Collect(the_geom ORDER BY seq))) AS geojson,
+    ST_AsGeoJSON(ST_LineMerge(ST_Collect(geom ORDER BY seq))) AS geojson,
     SUM(edge_m) AS total_m,
     SUM(road_m) AS road_m,
-    array_agg(gid ORDER BY seq) AS edge_ids
+    array_agg(edge_id ORDER BY seq) AS edge_ids
   FROM joined;
 $$;
 
@@ -83,9 +87,9 @@ AS $$
     SELECT seq, edge
     FROM pgr_dijkstra(
       format(
-        'SELECT gid AS id, source, target, '
-        || 'CASE WHEN gid = ANY(ARRAY[%s]::bigint[]) THEN cost_off_road * 8 ELSE cost_off_road END AS cost, '
-        || 'CASE WHEN gid = ANY(ARRAY[%s]::bigint[]) THEN reverse_cost_off_road * 8 ELSE reverse_cost_off_road END AS reverse_cost '
+        'SELECT id, source, target, '
+        || 'CASE WHEN id = ANY(ARRAY[%s]::bigint[]) THEN cost_off_road * 8 ELSE cost_off_road END AS cost, '
+        || 'CASE WHEN id = ANY(ARRAY[%s]::bigint[]) THEN reverse_cost_off_road * 8 ELSE reverse_cost_off_road END AS reverse_cost '
         || 'FROM ways',
         array_to_string(avoid_edges, ','), array_to_string(avoid_edges, ',')
       ),
@@ -96,17 +100,17 @@ AS $$
   joined AS (
     SELECT
       p.seq,
-      w.the_geom,
-      ST_Length(w.the_geom::geography) AS edge_m,
-      CASE WHEN w.cost_off_road > w.length_m * 2 THEN ST_Length(w.the_geom::geography) ELSE 0 END AS road_m,
-      w.gid
-    FROM path p JOIN ways w ON w.gid = p.edge
+      w.geom,
+      ST_Length(w.geom::geography) AS edge_m,
+      CASE WHEN w.cost_off_road > w.length_m * 2 THEN ST_Length(w.geom::geography) ELSE 0 END AS road_m,
+      w.id AS edge_id
+    FROM path p JOIN ways w ON w.id = p.edge
   )
   SELECT
-    ST_AsGeoJSON(ST_LineMerge(ST_Collect(the_geom ORDER BY seq))),
+    ST_AsGeoJSON(ST_LineMerge(ST_Collect(geom ORDER BY seq))),
     SUM(edge_m),
     SUM(road_m),
-    array_agg(gid ORDER BY seq)
+    array_agg(edge_id ORDER BY seq)
   FROM joined;
 $$;
 

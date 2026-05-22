@@ -1,9 +1,19 @@
-import { ai } from "../genkit";
+/**
+ * Route narrative generation — calls Gemini 2.5 Flash directly via REST.
+ *
+ * We deliberately avoid importing the Genkit SDK here because Genkit's
+ * telemetry/reflection-server initialization keeps the Node event loop alive
+ * and causes Next.js API routes to hang. A direct fetch to the Gemini REST
+ * endpoint has zero startup overhead.
+ */
+
 import type { LoopResult, Theme } from "@/lib/route-engine";
 
-// Banned words list — Gemini gravitates to these without enforcement. The
-// list is repeated inside the system prompt because telling the model "do not
-// use X" lands harder than relying on style description alone.
+const GEMINI_REST_BASE =
+  "https://generativelanguage.googleapis.com/v1beta/models";
+const MODEL = "gemini-2.5-flash";
+
+// Banned words list — Gemini gravitates to these without enforcement.
 const BANNED_WORDS = [
   "charming",
   "picturesque",
@@ -18,10 +28,10 @@ const BANNED_WORDS = [
 ];
 
 const BANNED_PATTERNS = [
-  "isn't just",      // "isn't just a walk, it's a journey"
+  "isn't just",
   "is not just",
   "more than just",
-  "a journey through", // tired phrasing
+  "a journey through",
 ];
 
 const NARRATE_SYSTEM = `You are writing a short blurb for a circular walking route in the Cotswolds. The walker is choosing whether to spend their day on this loop; you have three paragraphs to help them decide.
@@ -48,7 +58,6 @@ Do not promise the weather, the season, or who will be there.`;
 export interface NarrateRouteInput {
   loop: LoopResult;
   theme: Theme;
-  /** Optional human-readable place name, e.g. "Stow-on-the-Wold". */
   startLabel?: string;
 }
 
@@ -95,24 +104,57 @@ Now write the 3-paragraph blurb. Follow the structure exactly. Do not break the 
   return { system: NARRATE_SYSTEM, prompt };
 }
 
-/** One-shot narrative generation. Returns the full text. The route engine
- *  caches this in routes.narrative so subsequent requests skip the LLM call. */
+/** One-shot narrative generation via the Gemini REST API. */
 export async function narrateRoute(input: NarrateRouteInput): Promise<string> {
-  const { system, prompt } = buildNarrateRoutePrompt(input);
-  const res = await ai.generate({
-    system,
-    prompt,
-    config: { temperature: 0.6 },
-  });
-  return res.text.trim();
-}
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY not set");
 
-/** Streaming variant for chat-style UIs. */
-export function streamRouteNarration(input: NarrateRouteInput) {
   const { system, prompt } = buildNarrateRoutePrompt(input);
-  return ai.generateStream({
-    system,
-    prompt,
-    config: { temperature: 0.6 },
+
+  const url = `${GEMINI_REST_BASE}/${MODEL}:generateContent?key=${apiKey}`;
+  const body = {
+    system_instruction: {
+      parts: [{ text: system }],
+    },
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: prompt }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.6,
+      // Gemini 2.5 Flash defaults to 8192 thinking tokens, which consumed the
+      // entire output budget at 1024. thinkingBudget:0 disables thinking;
+      // maxOutputTokens:8192 gives enough room for 3 paragraphs.
+      maxOutputTokens: 8192,
+      thinkingConfig: {
+        thinkingBudget: 0,
+      },
+    },
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gemini API error ${res.status}: ${text.slice(0, 200)}`);
+  }
+
+  const json = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    error?: { message?: string };
+  };
+
+  if (json.error) throw new Error(`Gemini error: ${json.error.message}`);
+
+  const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini returned empty response");
+
+  return text.trim();
 }

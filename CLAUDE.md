@@ -26,9 +26,16 @@ A trail-native accommodation booking platform for the Cotswold Way (102-mile Nat
 - `/itinerary` — Template selection + timeline builder with stops
 
 ## Commands
-- `npm run dev` — Start dev server on port 3000
+- `npm run dev` — Start dev server on port 3000 (**requires Node.js 20** — use `PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run dev`)
 - `npm run build` — Production build
 - `npm run lint` — ESLint
+
+## Local services
+- **GraphHopper** (walking routes, `/walks/*`): `cd graphhopper && java -Xmx4g -jar graphhopper-web-10.0.jar server config.yml`
+  - First run builds graph cache (~60s). Subsequent starts reuse cache (~10s).
+  - Binds to `http://127.0.0.1:8989`. Set `GRAPHHOPPER_URL=http://127.0.0.1:8989` in `.env.local`.
+  - Data file: `graphhopper/data/cotswolds-aonb.osm.pbf` (64MB Cotswolds clip, not committed).
+  - The walks feature (`/api/routes/generate`, `/walks/preview`) returns 500 if GH is not running.
 
 ## Conventions
 - Components in `src/components/`

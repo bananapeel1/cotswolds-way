@@ -1,5 +1,5 @@
 /**
- * Route Engine — generative circular walks anchored on midpoint POIs.
+ * Route Engine — generative circular walks via GraphHopper round-trip routing.
  *
  * Public surface:
  *   findOrGenerate(req)   — cache-aware entry point. Returns LoopResult or null.
@@ -7,18 +7,22 @@
  *   scoreLoop(loop, req)  — scoring function (exported for inspection/testing).
  *   buildCacheKey(req)    — deterministic cache key for a request.
  *
+ * Routing backend: GraphHopper (local HTTP server, `algorithm=round_trip`).
+ * Set GRAPHHOPPER_URL env var to override the default http://localhost:8989.
+ *
  * Depends on:
- *   - osm2pgrouting having populated `ways` and `ways_vertices_pgr` tables
- *     (see scripts/ingest-osm-aonb.sh)
+ *   - GraphHopper running with foot+hike profiles (see graphhopper/config.yml)
  *   - pois table enriched with terrain_class, scenic_score, is_lunch_stop
  *     (see scripts/backfill-poi-terrain.mjs)
- *   - Routing helper SQL functions installed
- *     (see scripts/post-ingest-routing-functions.sql)
  *   - routes cache table + upsert_route / get_route_by_cache_key RPCs
  *     (see supabase/migrations/012_routes_table.sql)
+ *   - candidate_midpoint_pois RPC installed
+ *     (see scripts/post-ingest-routing-functions.sql)
  */
 
 import { getAdminClient } from "@/lib/supabase-admin";
+
+const GH_BASE = (process.env.GRAPHHOPPER_URL ?? "http://localhost:8989").replace(/\/$/, "");
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -27,7 +31,7 @@ export type Theme = "ridge" | "valley" | "woodland";
 export interface LoopRequest {
   startLat: number;
   startLng: number;
-  /** Target loop length in km. Engine accepts ±20% on the actual result. */
+  /** Target loop length in km. Engine accepts ±25% on the actual result. */
   targetKm: number;
   theme: Theme;
 }
@@ -45,7 +49,7 @@ export interface MidpointPoi {
 
 export interface LoopResult {
   cacheKey: string;
-  geometry: GeoJSON.LineString | GeoJSON.MultiLineString;
+  geometry: GeoJSON.LineString;
   actualKm: number;
   ascentM: number;
   durationMin: number;
@@ -58,7 +62,7 @@ export interface LoopResult {
   cached: boolean;
 }
 
-export const ENGINE_VERSION = "v1";
+export const ENGINE_VERSION = "v2"; // v2 = GraphHopper backend
 
 // ─── Cache key ──────────────────────────────────────────────────────────────
 
@@ -91,7 +95,7 @@ export async function findCached(cacheKey: string): Promise<LoopResult | null> {
     ascentM: row.ascent_m,
     durationMin: row.duration_min,
     midpointPoi: {
-      id: row.midpoint_poi_id,
+      id: row.midpoint_poi_id ?? -1,
       name: row.midpoint_name ?? "(unknown)",
       type: row.midpoint_type ?? "unknown",
       lng: row.midpoint_lng ?? 0,
@@ -104,6 +108,57 @@ export async function findCached(cacheKey: string): Promise<LoopResult | null> {
     narrative: row.narrative,
     cached: true,
   };
+}
+
+// ─── GraphHopper round-trip ──────────────────────────────────────────────────
+
+type Coord = [number, number];
+
+interface GhRoundTripResult {
+  coords: Coord[];
+  distanceM: number;
+}
+
+/**
+ * Call GraphHopper's round_trip algorithm. Returns a closed loop polyline
+ * starting and ending at (lat, lng) of approximately targetM metres.
+ * seed controls the shape; try seeds 0..N for variety.
+ */
+async function callGraphhopperRoundTrip(
+  lat: number,
+  lng: number,
+  targetM: number,
+  seed: number,
+): Promise<GhRoundTripResult | null> {
+  const url =
+    `${GH_BASE}/route` +
+    `?point=${lat},${lng}` +
+    `&profile=hike` +
+    `&algorithm=round_trip` +
+    `&round_trip.distance=${Math.round(targetM)}` +
+    `&round_trip.seed=${seed}` +
+    `&points_encoded=false`;
+
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn("[route-engine] GH returned", res.status, text.slice(0, 200));
+      return null;
+    }
+    const json = (await res.json()) as {
+      paths?: { points?: { coordinates: number[][] }; distance?: number }[];
+    };
+    const path = json?.paths?.[0];
+    if (!path?.points?.coordinates || typeof path.distance !== "number") return null;
+    return {
+      coords: path.points.coordinates as Coord[],
+      distanceM: path.distance,
+    };
+  } catch (err) {
+    console.warn("[route-engine] GH round_trip threw:", err);
+    return null;
+  }
 }
 
 // ─── Generate ───────────────────────────────────────────────────────────────
@@ -120,147 +175,129 @@ interface CandidateRow {
   distance_m: number;
 }
 
-interface PathLegRow {
-  geojson: string;
-  total_m: number;
-  road_m: number;
-  edge_ids: number[];
-}
-
-/** Generate a loop without consulting the cache. ~2-5s wallclock per call
- *  (5 candidate POIs × 2 pgr_dijkstra calls + 1 elevation batch). */
+/**
+ * Generate a loop without consulting the cache.
+ * Tries up to SEEDS different GH round_trip seeds; picks the best.
+ * ~1-3s wallclock per call (GH is fast; elevation API is the slow bit).
+ */
 export async function generateLoop(req: LoopRequest): Promise<LoopResult | null> {
   const sb = getAdminClient();
-
-  // 1. Snap start to graph.
-  const startVidRes = await sb.rpc("nearest_way_vertex", {
-    p_lng: req.startLng,
-    p_lat: req.startLat,
-  });
-  if (startVidRes.error || startVidRes.data == null) {
-    console.warn("[route-engine] failed to snap start to graph:", startVidRes.error?.message);
-    return null;
-  }
-  const startVid = startVidRes.data as number;
-
-  // 2. Find theme-matching POIs in the distance band.
   const targetM = req.targetKm * 1000;
-  const candidatesRes = await sb.rpc("candidate_midpoint_pois", {
-    start_lng: req.startLng,
-    start_lat: req.startLat,
-    theme_filter: req.theme,
-    band_lo_m: targetM * 0.40,
-    band_hi_m: targetM * 0.55,
-    max_candidates: 5,
-  });
-  if (candidatesRes.error) {
-    console.warn("[route-engine] candidate POI query failed:", candidatesRes.error.message);
-    return null;
-  }
-  const candidates = (candidatesRes.data ?? []) as CandidateRow[];
-  if (candidates.length === 0) {
-    return null;
-  }
 
-  // 3. For each candidate, build a loop. Track the best.
-  type Scored = {
-    geometry: GeoJSON.LineString;
-    actualKm: number;
-    roadM: number;
-    overlap: number;
-    midpointPoi: MidpointPoi;
-    edgeIds: number[];
+  // Try a handful of seeds to get route variety; all run concurrently.
+  const SEEDS = [0, 1, 2, 42];
+  const routePromises = SEEDS.map((seed) =>
+    callGraphhopperRoundTrip(req.startLat, req.startLng, targetM, seed),
+  );
+  const rawRoutes = await Promise.all(routePromises);
+
+  // Filter: reject routes that are too far off target (±30%).
+  type Candidate = {
+    coords: Coord[];
+    distanceM: number;
+    midpoint: Coord;
+    poi: MidpointPoi | null;
   };
-  const built: Scored[] = [];
+  const candidates: Candidate[] = [];
 
-  for (const c of candidates) {
-    const poiVidRes = await sb.rpc("nearest_way_vertex", {
-      p_lng: c.longitude,
-      p_lat: c.latitude,
+  for (const r of rawRoutes) {
+    if (!r) continue;
+    const ratio = Math.abs(r.distanceM - targetM) / targetM;
+    if (ratio > 0.30) continue;
+
+    // Find the coord at ~50% of the route (the "lunch stop" area).
+    const midpoint = routeMidpointCoord(r.coords);
+
+    // Look for a theme-matching POI within 1.5 km of the midpoint.
+    const poisRes = await sb.rpc("candidate_midpoint_pois", {
+      start_lng: midpoint[0],
+      start_lat: midpoint[1],
+      theme_filter: req.theme,
+      band_lo_m: 0,
+      band_hi_m: 1500,
+      max_candidates: 3,
     });
-    if (poiVidRes.error || poiVidRes.data == null) continue;
-    const poiVid = poiVidRes.data as number;
+    const poiRows = (poisRes.data ?? []) as CandidateRow[];
+    const poi: MidpointPoi | null =
+      poiRows.length > 0
+        ? {
+            id: poiRows[0].id,
+            name: poiRows[0].name,
+            type: poiRows[0].type,
+            lng: poiRows[0].longitude,
+            lat: poiRows[0].latitude,
+            scenicScore: poiRows[0].scenic_score ?? 5,
+            terrainClass: poiRows[0].terrain_class,
+            isLunchStop: poiRows[0].is_lunch_stop,
+          }
+        : null;
 
-    const outRes = await sb.rpc("shortest_path_between", {
-      start_vid: startVid,
-      end_vid: poiVid,
-    });
-    if (outRes.error || !outRes.data || outRes.data.length === 0) continue;
-    const outLeg = outRes.data[0] as PathLegRow;
-    if (!outLeg.geojson) continue;
-
-    const retRes = await sb.rpc("shortest_path_avoiding", {
-      start_vid: poiVid,
-      end_vid: startVid,
-      avoid_edges: outLeg.edge_ids,
-    });
-    if (retRes.error || !retRes.data || retRes.data.length === 0) continue;
-    const retLeg = retRes.data[0] as PathLegRow;
-    if (!retLeg.geojson) continue;
-
-    const combined = combineLegs(outLeg.geojson, retLeg.geojson);
-    if (!combined) continue;
-
-    const actualKm = (outLeg.total_m + retLeg.total_m) / 1000;
-    // Reject if the loop is way off target — saves elevation API quota.
-    if (Math.abs(actualKm - req.targetKm) / req.targetKm > 0.30) continue;
-
-    const overlap = overlapRatio(outLeg.edge_ids, retLeg.edge_ids);
-
-    built.push({
-      geometry: combined,
-      actualKm,
-      roadM: outLeg.road_m + retLeg.road_m,
-      overlap,
-      edgeIds: [...outLeg.edge_ids, ...retLeg.edge_ids],
-      midpointPoi: {
-        id: c.id,
-        name: c.name,
-        type: c.type,
-        lng: c.longitude,
-        lat: c.latitude,
-        scenicScore: c.scenic_score ?? 5,
-        terrainClass: c.terrain_class,
-        isLunchStop: c.is_lunch_stop,
-      },
-    });
+    candidates.push({ coords: r.coords, distanceM: r.distanceM, midpoint, poi });
   }
 
-  if (built.length === 0) return null;
+  if (candidates.length === 0) return null;
 
-  // 4. Quick prescore on cheap features; pick top 1, then do elevation for the winner.
-  built.sort((a, b) => prescore(b, req) - prescore(a, req));
-  const winner = built[0];
+  // Pre-score to find the best candidate; elevation only for the winner.
+  type Scored = Candidate & { prescore: number };
+  const scored: Scored[] = candidates.map((c) => ({
+    ...c,
+    prescore: scoreLoop(
+      {
+        actualKm: c.distanceM / 1000,
+        roadM: 0,
+        overlap: 0.05, // GH round_trip minimises overlap; conservative estimate
+        ascentM: 100,  // neutral pre-elevation guess
+        durationMin: (c.distanceM / 1000) * 12,
+        midpointScenicScore: c.poi?.scenicScore ?? 5,
+      },
+      req,
+    ),
+  }));
+  scored.sort((a, b) => b.prescore - a.prescore);
+  const winner = scored[0];
 
-  // 5. Elevation profile for the winner via Open-Meteo (one batch).
-  // GeoJSON's Position type permits 3-tuple [lng, lat, alt]; our internal
-  // Coord helpers only use [lng, lat]. Narrow at the boundary.
-  const coords = winner.geometry.coordinates as [number, number][];
-  const elev = await sampleElevation(coords);
+  // Elevation for the winner only.
+  const elev = await sampleElevation(winner.coords);
   const { ascentM } = integrateElevation(elev);
-  const durationHours = toblerHoursForProfile(coords, elev);
+  const durationHours = toblerHoursForProfile(winner.coords, elev);
   const durationMin = Math.round(durationHours * 60);
 
-  // 6. Final score with elevation factored in.
   const finalScore = scoreLoop(
     {
-      actualKm: winner.actualKm,
-      roadM: winner.roadM,
-      overlap: winner.overlap,
+      actualKm: winner.distanceM / 1000,
+      roadM: 0,
+      overlap: 0.05,
       ascentM,
       durationMin,
-      midpointScenicScore: winner.midpointPoi.scenicScore,
+      midpointScenicScore: winner.poi?.scenicScore ?? 5,
     },
     req,
   );
 
+  // Synthesise a midpoint POI if none was found near the midpoint.
+  const midpointPoi: MidpointPoi = winner.poi ?? {
+    id: -1,
+    name: "Route midpoint",
+    type: "viewpoint",
+    lng: winner.midpoint[0],
+    lat: winner.midpoint[1],
+    scenicScore: 5,
+    terrainClass: null,
+    isLunchStop: false,
+  };
+
+  const geometry: GeoJSON.LineString = {
+    type: "LineString",
+    coordinates: winner.coords,
+  };
+
   return {
     cacheKey: buildCacheKey(req),
-    geometry: winner.geometry,
-    actualKm: Math.round(winner.actualKm * 10) / 10,
+    geometry,
+    actualKm: Math.round((winner.distanceM / 1000) * 10) / 10,
     ascentM,
     durationMin,
-    midpointPoi: winner.midpointPoi,
+    midpointPoi,
     score: Math.round(finalScore * 100) / 100,
     narrative: null,
     cached: false,
@@ -284,6 +321,8 @@ export async function findOrGenerate(req: LoopRequest): Promise<LoopResult | nul
 
 async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
   const sb = getAdminClient();
+  // Don't cache synthetic (-1) midpoints — they carry no real POI signal.
+  const poiId = loop.midpointPoi.id >= 0 ? loop.midpointPoi.id : null;
   const { error } = await sb.rpc("upsert_route", {
     p_cache_key: loop.cacheKey,
     p_start_lng: req.startLng,
@@ -293,7 +332,7 @@ async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
     p_actual_km: loop.actualKm,
     p_ascent_m: loop.ascentM,
     p_duration_min: loop.durationMin,
-    p_midpoint_poi_id: loop.midpointPoi.id,
+    p_midpoint_poi_id: poiId,
     p_geometry_geojson: JSON.stringify(loop.geometry),
     p_score: loop.score,
     p_narrative: loop.narrative,
@@ -322,7 +361,7 @@ export async function setNarrative(cacheKey: string, narrative: string): Promise
 export interface ScoreInputs {
   actualKm: number;
   roadM: number;
-  overlap: number;          // 0..1, share of outbound edges reused by return
+  overlap: number;          // 0..1, share of route that doubles back on itself
   ascentM: number;
   durationMin: number;
   midpointScenicScore: number;
@@ -347,68 +386,25 @@ export function scoreLoop(s: ScoreInputs, req: LoopRequest): number {
   );
 }
 
-/** Cheap pre-score for ranking candidates before we spend on the elevation API. */
-function prescore(
-  c: { actualKm: number; roadM: number; overlap: number; midpointPoi: MidpointPoi },
-  req: LoopRequest,
-): number {
-  return scoreLoop(
-    {
-      actualKm: c.actualKm,
-      roadM: c.roadM,
-      overlap: c.overlap,
-      ascentM: 100, // neutral guess pre-elevation
-      durationMin: c.actualKm * 12, // ~5km/h flat baseline
-      midpointScenicScore: c.midpointPoi.scenicScore,
-    },
-    req,
-  );
-}
-
 // ─── Geometry helpers ───────────────────────────────────────────────────────
 
-type Coord = [number, number];
-
 /**
- * Glue the outbound + return legs into one LineString. PostGIS sometimes
- * returns MultiLineString when ST_LineMerge can't simplify; we flatten in
- * either case. Caller passes the GeoJSON strings from the RPC.
- *
- * Drops the duplicated POI vertex where leg 1 ends and leg 2 begins.
+ * Return the coordinate at ~50% cumulative distance along a polyline.
+ * Used to find the "lunch stop" zone of a generated loop.
  */
-function combineLegs(outGeojson: string, retGeojson: string): GeoJSON.LineString | null {
-  const outCoords = flattenCoords(outGeojson);
-  const retCoords = flattenCoords(retGeojson);
-  if (outCoords.length < 2 || retCoords.length < 2) return null;
-  // Drop the seam vertex if it duplicates.
-  const seamSame =
-    Math.abs(outCoords[outCoords.length - 1][0] - retCoords[0][0]) < 1e-7 &&
-    Math.abs(outCoords[outCoords.length - 1][1] - retCoords[0][1]) < 1e-7;
-  const combined = seamSame
-    ? [...outCoords, ...retCoords.slice(1)]
-    : [...outCoords, ...retCoords];
-  return { type: "LineString", coordinates: combined };
-}
-
-function flattenCoords(geojson: string): Coord[] {
-  try {
-    const g = JSON.parse(geojson);
-    if (g.type === "LineString") return g.coordinates as Coord[];
-    if (g.type === "MultiLineString") {
-      return (g.coordinates as Coord[][]).flat();
-    }
-    return [];
-  } catch {
-    return [];
+function routeMidpointCoord(coords: Coord[]): Coord {
+  if (coords.length < 2) return coords[0] ?? [0, 0];
+  let total = 0;
+  const cumulative: number[] = [0];
+  for (let i = 1; i < coords.length; i++) {
+    total += haversineKm(coords[i - 1], coords[i]);
+    cumulative.push(total);
   }
-}
-
-function overlapRatio(outEdges: number[], retEdges: number[]): number {
-  if (outEdges.length === 0) return 0;
-  const retSet = new Set(retEdges);
-  let shared = 0;
-  for (const e of outEdges) if (retSet.has(e)) shared++;
-  return shared / outEdges.length;
+  const half = total / 2;
+  for (let i = 1; i < cumulative.length; i++) {
+    if (cumulative[i] >= half) return coords[i];
+  }
+  return coords[Math.floor(coords.length / 2)];
 }
 
 // ─── Elevation ──────────────────────────────────────────────────────────────
@@ -454,17 +450,12 @@ function integrateElevation(elev: number[]): { ascentM: number; descentM: number
 }
 
 /**
- * Tobler's hiking function over a real elevation profile. Same formula as
- * estimateWalkingTime() in plan-engine.ts, but generalised to an arbitrary
- * polyline + sampled elevations rather than the Cotswold Way mile profile.
- *
+ * Tobler's hiking function over a real elevation profile.
  *   v(slope) = 6 · exp(-3.5 · |slope + 0.05|) km/h
- *
- * Returns total walking hours, no scalar applied (caller can multiply).
+ * Returns total walking hours.
  */
 function toblerHoursForProfile(coords: Coord[], elevations: number[]): number {
   if (coords.length < 2) return 0;
-  // Align elevations to coord indices via proportional mapping.
   const eMap = (i: number) => {
     if (elevations.length === 0) return 150;
     const idx = Math.min(

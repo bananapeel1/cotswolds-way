@@ -22,8 +22,11 @@
 
 set -euo pipefail
 
-# AONB bbox (roughly): south=51.3 west=-2.7 north=52.2 east=-1.5
-# Buffer pad of ~0.1° so loops near the AONB edge don't run out of graph.
+# Wider Cotswolds-region bbox so the route engine has a complete path graph
+# beyond the trail corridor — covers the whole AONB plus a ~10km buffer in all
+# directions. Routes from any postcode in the region work.
+# Safe to use the wide bbox now that --chunk 5000 keeps individual INSERTs
+# under the 2-min server-side statement_timeout.
 BBOX_W="-2.8"
 BBOX_S="51.2"
 BBOX_E="-1.4"
@@ -32,6 +35,7 @@ BBOX_N="52.3"
 WORK_DIR="${WORK_DIR:-./tmp-osm-ingest}"
 ENGLAND_PBF="${WORK_DIR}/england-latest.osm.pbf"
 AONB_PBF="${WORK_DIR}/cotswolds-aonb.osm.pbf"
+AONB_XML="${WORK_DIR}/cotswolds-aonb.osm"
 MAPCONFIG="$(dirname "$0")/mapconfig.xml"
 
 mkdir -p "$WORK_DIR"
@@ -59,6 +63,12 @@ osmium extract \
 
 echo "      Clipped extract: $(du -h "$AONB_PBF" | cut -f1)"
 
+echo "[2b/5] Converting PBF to OSM XML for osm2pgrouting..."
+# osm2pgrouting v3 reads only XML, not PBF, so we expand. XML is ~5x bigger
+# than PBF but only briefly — we delete it after the ingest.
+osmium cat "$AONB_PBF" -o "$AONB_XML" --overwrite
+echo "      XML extract: $(du -h "$AONB_XML" | cut -f1)"
+
 echo "[3/5] Parsing connection string for osm2pgrouting..."
 # osm2pgrouting takes individual flags, not a URI. Parse the SUPABASE_DB_URL.
 # Format: postgresql://USER:PASS@HOST:PORT/DBNAME
@@ -74,17 +84,27 @@ if [ -z "$PG_HOST" ] || [ -z "$PG_DB" ]; then
 fi
 
 echo "[4/5] Running osm2pgrouting (~5-15 min for AONB-sized extract)..."
+# --chunk 5000 keeps each bulk INSERT small enough to finish under Supabase's
+# server-side statement_timeout (120s on free/pro tiers). The default of 20000
+# was timing out mid-ingest and hanging the client connection.
 PGPASSWORD="$PG_PASS" osm2pgrouting \
-  --file "$AONB_PBF" \
+  --file "$AONB_XML" \
   --conf "$MAPCONFIG" \
   --dbname "$PG_DB" \
   --username "$PG_USER" \
+  --password "$PG_PASS" \
   --host "$PG_HOST" \
   --port "$PG_PORT" \
+  --chunk 5000 \
   --clean
 
 echo "[5/5] Adding cost_off_road column and applying routing helper functions..."
 psql "$SUPABASE_DB_URL" <<'SQL'
+-- Supabase defaults statement_timeout to 2 min cluster-wide. The big UPDATE
+-- below touches every row in `ways` and easily blows past that. Disabling for
+-- this session only — no persistent change.
+SET statement_timeout = 0;
+
 -- Add a cost column that's a function of length × highway priority.
 -- The mapconfig.xml priority is loaded into the configuration table at ingest;
 -- we read it back to compute cost_off_road = length_m * priority.
@@ -94,22 +114,21 @@ psql "$SUPABASE_DB_URL" <<'SQL'
 -- fails so the route engine still works degraded.
 ALTER TABLE ways
   ADD COLUMN IF NOT EXISTS cost_off_road DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS reverse_cost_off_road DOUBLE PRECISION,
-  ADD COLUMN IF NOT EXISTS length_m DOUBLE PRECISION;
+  ADD COLUMN IF NOT EXISTS reverse_cost_off_road DOUBLE PRECISION;
 
-UPDATE ways w
+-- osm2pgrouting v3 populates `length_m` and `priority` directly on `ways`,
+-- so we no longer need to JOIN against `configuration`. Just multiply.
+UPDATE ways
 SET
-  length_m = ST_Length(w.the_geom::geography),
-  cost_off_road = ST_Length(w.the_geom::geography)
-    * COALESCE((SELECT priority FROM configuration c WHERE c.id = w.class_id), 1.0),
-  reverse_cost_off_road = ST_Length(w.the_geom::geography)
-    * COALESCE((SELECT priority FROM configuration c WHERE c.id = w.class_id), 1.0);
+  cost_off_road         = length_m * COALESCE(priority, 1.0),
+  reverse_cost_off_road = length_m * COALESCE(priority, 1.0);
 
--- Index for routing performance.
+-- Index for routing performance. osm2pgrouting already creates source/target
+-- and geom indexes; these are belt-and-braces in case of older versions.
 CREATE INDEX IF NOT EXISTS idx_ways_source ON ways(source);
 CREATE INDEX IF NOT EXISTS idx_ways_target ON ways(target);
-CREATE INDEX IF NOT EXISTS idx_ways_geom ON ways USING GIST(the_geom);
-CREATE INDEX IF NOT EXISTS idx_ways_vertices_geom ON ways_vertices_pgr USING GIST(the_geom);
+CREATE INDEX IF NOT EXISTS idx_ways_geom ON ways USING GIST(geom);
+CREATE INDEX IF NOT EXISTS idx_ways_vertices_geom ON ways_vertices_pgr USING GIST(geom);
 SQL
 
 psql "$SUPABASE_DB_URL" -f "$(dirname "$0")/post-ingest-routing-functions.sql"
