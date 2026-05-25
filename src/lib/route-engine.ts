@@ -274,11 +274,16 @@ async function callGraphhopperRoundTrip(
     const json = (await res.json()) as {
       paths?: { points?: { coordinates: number[][] }; distance?: number }[];
     };
-    const path = json?.paths?.[0];
-    if (!path?.points?.coordinates || typeof path.distance !== "number") return null;
+    // Renamed from `path` to avoid colliding with the URL-path variable
+    // above. The outer `path` is the request URL fragment; this is one of
+    // GraphHopper's "paths" — a candidate route.
+    const ghPath = json?.paths?.[0];
+    if (!ghPath?.points?.coordinates || typeof ghPath.distance !== "number") {
+      return null;
+    }
     return {
-      coords: path.points.coordinates as Coord[],
-      distanceM: path.distance,
+      coords: ghPath.points.coordinates as Coord[],
+      distanceM: ghPath.distance,
     };
   } catch (err) {
     console.warn("[route-engine] GH round_trip threw:", err);
