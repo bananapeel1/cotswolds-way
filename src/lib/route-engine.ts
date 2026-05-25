@@ -432,7 +432,13 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
   const elev = await sampleElevation(winner.coords);
   const { ascentM } = integrateElevation(elev);
   const durationHours = toblerHoursForProfile(winner.coords, elev);
-  const durationMin = Math.round(durationHours * 60);
+  // Guard against floating-point blow-up (e.g. near-zero velocity on a
+  // degenerate segment producing Infinity or astronomically large hours).
+  // Cap at 24 hours; any real Cotswolds walk is well inside that limit.
+  const rawDurationMin = durationHours * 60;
+  const durationMin = Number.isFinite(rawDurationMin)
+    ? Math.min(Math.round(rawDurationMin), 24 * 60)
+    : Math.round((winner.distanceM / 1000) * 15); // Naismith fallback
 
   const finalScore = scoreLoop(
     {

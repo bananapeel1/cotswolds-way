@@ -158,6 +158,47 @@ async function setSeoSlug(cacheKey, seoSlug) {
   if (error) throw new Error(`set_route_seo_slug: ${error.message}`);
 }
 
+// ─── Direct upsert from seed script ──────────────────────────────────────────
+// When the backend's persistRoute fails (PostgREST INT4 coercion of BIGINT
+// POI IDs > 2,147,483,647), the route exists in memory but never reaches
+// Supabase. This function inserts/updates the route row directly from the
+// seed script — we always pass p_midpoint_poi_id = null to avoid the overflow.
+
+async function upsertRouteDirect({ cacheKey, village, theme, km, data }) {
+  // First check: is the route already in the DB? If so, don't overwrite
+  // a valid midpoint_poi_id with null.
+  const { data: existing } = await sb
+    .from("routes")
+    .select("id")
+    .eq("cache_key", cacheKey)
+    .limit(1);
+
+  if (existing && existing.length > 0) return; // already persisted, skip
+
+  // Cap INTEGER-column values at INT4 max (2 147 483 647) in case the route
+  // engine produced an out-of-range value (e.g. Tobler blow-up for durationMin).
+  const MAX_INT4 = 2_147_483_647;
+  const safeAscentM    = Math.min(Math.round(data.ascentM   ?? 0), MAX_INT4);
+  const safeDurationMin = Math.min(Math.round(data.durationMin ?? 0), MAX_INT4);
+
+  const { error } = await sb.rpc("upsert_route", {
+    p_cache_key: cacheKey,
+    p_start_lng: village.lng,
+    p_start_lat: village.lat,
+    p_theme: theme,
+    p_target_km: km,
+    p_actual_km: data.actualKm,
+    p_ascent_m: safeAscentM,
+    p_duration_min: safeDurationMin,
+    p_midpoint_poi_id: null, // always null — sidesteps PostgREST INT4 coercion
+    p_geometry_geojson: JSON.stringify(data.geometry),
+    p_score: data.score,
+    p_narrative: data.narrative ?? null,
+    p_engine_version: "v2",
+  });
+  if (error) throw new Error(`upsert_route (direct): ${error.message}`);
+}
+
 // ─── Check if already seeded ─────────────────────────────────────────────────
 
 async function isAlreadySeeded(seoSlug) {
@@ -173,7 +214,7 @@ async function isAlreadySeeded(seoSlug) {
 // ─── Worker ──────────────────────────────────────────────────────────────────
 
 async function processJob(job) {
-  const { seoSlug } = job;
+  const { seoSlug, village, theme, km } = job;
 
   // Skip if already stamped (idempotent re-runs).
   if (await isAlreadySeeded(seoSlug)) {
@@ -186,6 +227,12 @@ async function processJob(job) {
     const cacheKey = data?.cacheKey;
     if (!cacheKey) throw new Error("No cacheKey in response");
 
+    // Ensure the route is in the DB before stamping the slug.  The backend's
+    // persistRoute can silently fail when a midpoint POI ID overflows
+    // PostgREST's INT4 coercion.  Calling upsertRouteDirect from here fixes
+    // the gap: it checks first (no-op if already persisted) and only inserts
+    // when missing, always passing p_midpoint_poi_id = null.
+    await upsertRouteDirect({ cacheKey, village, theme, km, data });
     await setSeoSlug(cacheKey, seoSlug);
 
     const cached = data.cached ? " (cache hit)" : "";
