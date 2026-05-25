@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       },
       {
         beforeGenerate: async () => {
-          const ghAlive = await pingGraphHopper(500);
+          const ghAlive = await pingGraphHopper(2000);
           if (!ghAlive) {
             throw new ServiceDegradedError("graphhopper_unreachable");
           }

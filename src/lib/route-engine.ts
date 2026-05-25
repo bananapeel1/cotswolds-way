@@ -91,9 +91,18 @@ async function ghFetch(path: string, init: RequestInit = {}): Promise<Response> 
  * a structured 503 when GH is down rather than waiting for findOrGenerate to
  * fail opaquely. Returns true on 200, false on any non-2xx, network error,
  * or timeout. Never throws.
+ *
+ * NOTE: AbortSignal.timeout() starts counting from the moment it is created.
+ * getGcpIdToken() (called inside ghFetch) can take up to 2 s on a cold module
+ * because it hits the GCP metadata server. We pre-warm the token here so the
+ * AbortSignal only measures the actual GH network round-trip, not the auth
+ * overhead.
  */
 export async function pingGraphHopper(timeoutMs = 1500): Promise<boolean> {
   try {
+    // Pre-warm the OIDC token *before* starting the timeout clock so that the
+    // signal only covers the real GH health request.
+    await getGcpIdToken(GH_BASE);
     const res = await ghFetch("/health", {
       signal: AbortSignal.timeout(timeoutMs),
     });
