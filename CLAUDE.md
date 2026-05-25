@@ -42,7 +42,7 @@ A trail-native accommodation booking platform for the Cotswold Way (102-mile Nat
   - Deploy from project root: `gcloud builds submit graphhopper --config=graphhopper/cloudbuild.yaml`
   - Image is built in two stages (`graphhopper/Dockerfile`): builder runs `java -jar graphhopper-web.jar import config.yml` against `data/cotswolds-aonb.osm.pbf` to produce `graph-cache/`; runtime ships JRE + jar + pre-built cache only. Cold-start is ~5s (JVM warmup) instead of ~60s (graph build).
   - Runs at `min-instances=1, max=3, 2 vCPU, 4 GiB, port 8989, concurrency=20, --no-allow-unauthenticated`.
-  - Service-to-service auth: the Next.js runtime SA needs `roles/run.invoker` on the `cotswolds-graphhopper` Cloud Run service. The fetch call sends an identity token automatically when running on Firebase App Hosting / GCP.
+  - Service-to-service auth: the Next.js runtime SA needs `roles/run.invoker` on the `cotswolds-graphhopper` Cloud Run service. **The app explicitly fetches an OIDC ID token from the GCP metadata server and injects it into the Authorization header** (`getGcpIdToken` + `ghFetch` in `src/lib/route-engine.ts`); Node's plain `fetch` does NOT do this automatically. In local dev `K_SERVICE` is unset, the metadata lookup is skipped, and calls go unauthenticated against a localhost GraphHopper.
   - Prod env var: `GRAPHHOPPER_URL` set to the Cloud Run service URL (no trailing slash). Stored in Firebase Secret Manager.
 - **Rebuilding the graph after an OSM update**:
   1. Replace `graphhopper/data/cotswolds-aonb.osm.pbf` with the new clip (see `scripts/ingest-osm-aonb.sh`).

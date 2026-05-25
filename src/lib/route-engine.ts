@@ -26,6 +26,66 @@ import { getAdminClient } from "@/lib/supabase-admin";
 
 const GH_BASE = (process.env.GRAPHHOPPER_URL ?? "http://localhost:8989").replace(/\/$/, "");
 
+// ─── GCP service-to-service auth ────────────────────────────────────────────
+//
+// GraphHopper runs as a private Cloud Run service (`--no-allow-unauthenticated`),
+// so every call from the Next.js runtime must include an OIDC ID token in the
+// Authorization header. Node's plain `fetch` does not auto-inject one — even
+// when running on Firebase App Hosting where the underlying SA *has*
+// `roles/run.invoker` on the target service.
+//
+// We fetch the token from the GCP metadata server (works in App Hosting,
+// Cloud Run, Cloud Functions 2nd gen, GCE), cache it in-process, and refresh
+// ~10 min before its 1h expiry. K_SERVICE is set in every Cloud Run-based
+// runtime so we use it as the "am I on GCP?" gate; in local dev the metadata
+// server is unreachable and we fall back to unauthenticated calls (localhost
+// GraphHopper accepts those).
+
+let cachedIdToken: { token: string; expiresAt: number; audience: string } | null = null;
+
+async function getGcpIdToken(audience: string): Promise<string | null> {
+  if (!process.env.K_SERVICE) return null;
+  if (
+    cachedIdToken &&
+    cachedIdToken.audience === audience &&
+    cachedIdToken.expiresAt > Date.now()
+  ) {
+    return cachedIdToken.token;
+  }
+  try {
+    const url =
+      `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity` +
+      `?audience=${encodeURIComponent(audience)}`;
+    const res = await fetch(url, {
+      headers: { "Metadata-Flavor": "Google" },
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return null;
+    const token = (await res.text()).trim();
+    cachedIdToken = {
+      token,
+      audience,
+      // Google ID tokens are valid 1h; refresh 10 min early.
+      expiresAt: Date.now() + 50 * 60 * 1000,
+    };
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch wrapper that automatically attaches a GCP OIDC ID token when the
+ * runtime is on GCP. Same signature as `fetch` but takes a path (joined to
+ * GH_BASE) rather than a full URL, since every caller uses the same base.
+ */
+async function ghFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await getGcpIdToken(GH_BASE);
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return fetch(`${GH_BASE}${path}`, { ...init, headers });
+}
+
 /**
  * Lightweight liveness probe against GraphHopper. Lets the API layer return
  * a structured 503 when GH is down rather than waiting for findOrGenerate to
@@ -34,7 +94,7 @@ const GH_BASE = (process.env.GRAPHHOPPER_URL ?? "http://localhost:8989").replace
  */
 export async function pingGraphHopper(timeoutMs = 1500): Promise<boolean> {
   try {
-    const res = await fetch(`${GH_BASE}/health`, {
+    const res = await ghFetch("/health", {
       signal: AbortSignal.timeout(timeoutMs),
     });
     return res.ok;
@@ -195,8 +255,8 @@ async function callGraphhopperRoundTrip(
   targetM: number,
   seed: number,
 ): Promise<GhRoundTripResult | null> {
-  const url =
-    `${GH_BASE}/route` +
+  const path =
+    `/route` +
     `?point=${lat},${lng}` +
     `&profile=hike` +
     `&algorithm=round_trip` +
@@ -205,7 +265,7 @@ async function callGraphhopperRoundTrip(
     `&points_encoded=false`;
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    const res = await ghFetch(path, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       console.warn("[route-engine] GH returned", res.status, text.slice(0, 200));
