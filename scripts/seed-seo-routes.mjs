@@ -100,7 +100,14 @@ const VILLAGES = [
 ];
 
 const THEMES = ["ridge", "valley", "woodland"];
-const KM_TARGETS = [8, 12, 16];
+// km values are bucketed by buildCacheKey to the nearest 5km bin:
+//   12 → bin 10   (short walk)
+//   16 → bin 15   (medium walk)
+//   20 → bin 20   (long walk)
+// Three unique bins → no slug collisions. Re-seeding is idempotent:
+// already-stamped slugs are skipped; 8km slugs from earlier seeds are
+// overwritten with the cleaner 12km name on their shared cache row.
+const KM_TARGETS = [12, 16, 20];
 
 // Build all (village, theme, km) combos filtered to the CLI arg.
 function buildJobs() {
