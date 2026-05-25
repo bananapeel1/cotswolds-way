@@ -49,6 +49,39 @@ A trail-native accommodation booking platform for the Cotswold Way (102-mile Nat
   2. Verify locally: `rm -rf graphhopper/graph-cache && cd graphhopper && /opt/homebrew/opt/openjdk@21/bin/java -Xmx4g -jar graphhopper-web.jar server config.yml`
   3. Re-deploy: `gcloud builds submit graphhopper --config=graphhopper/cloudbuild.yaml`. Cloud Build rebuilds the graph inside the image so the runtime container starts with a fresh cache.
 
+## SEO walk pages (Phase 3)
+
+Pre-seeded landing pages at `/walks/[slug]` for 20 Cotswolds villages × 3 themes × 3 distances = 180 routes. Each page has a Mapbox map, stats, Gemini narrative, lunch stop, GPX download, and a "Stay nearby" accommodation panel.
+
+### Running the seed script (one-time + after major engine changes)
+
+```bash
+# Apply migration 013 to Supabase first (Supabase Dashboard → SQL editor, paste
+# contents of supabase/migrations/013_seo_routes.sql)
+
+# Then run the seed:
+BASE_URL=https://thecotswoldsway.com \
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+node scripts/seed-seo-routes.mjs
+
+# Or restrict to one village for testing:
+... node scripts/seed-seo-routes.mjs stow
+```
+
+The script is idempotent — re-running skips already-seeded routes.
+
+### Adding a new SEO route programmatically
+
+```ts
+// After calling findOrGenerate() to ensure the route is cached:
+await setSeoSlug(cacheKey, "my-village-ridge-walk-12km");
+```
+
+### Sitemap
+
+`src/app/sitemap.ts` is async and queries Supabase for all `is_seo_page=true` route slugs. Walk pages are included at priority 0.8.
+
 ## Conventions
 - Components in `src/components/`
 - Route pages in `src/app/`

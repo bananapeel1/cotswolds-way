@@ -535,6 +535,85 @@ async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
   }
 }
 
+// ─── SEO slug management ─────────────────────────────────────────────────────
+
+/**
+ * Extends LoopResult with start-point coordinates, the SEO slug, and the
+ * theme string. Returned by findBySlug, used only on /walks/[slug] SEO pages.
+ */
+export interface SeoRouteData extends LoopResult {
+  slug: string;
+  theme: string;
+  startLat: number;
+  startLng: number;
+}
+
+/**
+ * Look up an SEO walk page by its human-readable slug
+ * (e.g. "stow-on-the-wold-ridge-walk-12km").
+ * Returns null if no such SEO page is found.
+ */
+export async function findBySlug(slug: string): Promise<SeoRouteData | null> {
+  const sb = getAdminClient();
+  const { data, error } = await sb.rpc("get_route_by_slug", { p_slug: slug });
+  if (error) {
+    console.warn("[route-engine] get_route_by_slug failed:", error.message);
+    return null;
+  }
+  if (!data || data.length === 0) return null;
+  const row = data[0];
+  const geometry = JSON.parse(row.geojson) as GeoJSON.LineString;
+
+  let midpointLng: number = row.midpoint_lng ?? 0;
+  let midpointLat: number = row.midpoint_lat ?? 0;
+  if (!midpointLng || !midpointLat) {
+    const coords = geometry.coordinates as [number, number][];
+    const mid = routeMidpointCoord(coords);
+    midpointLng = mid[0];
+    midpointLat = mid[1];
+  }
+
+  return {
+    cacheKey: row.cache_key,
+    geometry,
+    actualKm: Number(row.actual_km),
+    ascentM: row.ascent_m,
+    durationMin: row.duration_min,
+    midpointPoi: {
+      id: row.midpoint_poi_id ?? -1,
+      name: row.midpoint_name ?? "Route midpoint",
+      type: row.midpoint_type ?? "viewpoint",
+      lng: midpointLng,
+      lat: midpointLat,
+      scenicScore: row.midpoint_scenic_score ?? 5,
+      terrainClass: row.midpoint_terrain_class,
+      isLunchStop: row.midpoint_is_lunch_stop ?? false,
+    },
+    score: Number(row.score),
+    narrative: row.narrative,
+    cached: true,
+    slug: row.slug,
+    theme: row.theme as string,
+    startLat: Number(row.start_lat),
+    startLng: Number(row.start_lng),
+  };
+}
+
+/**
+ * Stamp a cached route row as an SEO landing page.
+ * Called by the seed script after generating each route.
+ */
+export async function setSeoSlug(cacheKey: string, slug: string): Promise<void> {
+  const sb = getAdminClient();
+  const { error } = await sb.rpc("set_route_seo_slug", {
+    p_cache_key: cacheKey,
+    p_slug: slug,
+  });
+  if (error) {
+    console.warn("[route-engine] setSeoSlug failed:", error.message);
+  }
+}
+
 /** Update narrative for an already-persisted cache row. Called from the API
  *  route after Gemini narration completes. */
 export async function setNarrative(cacheKey: string, narrative: string): Promise<void> {
