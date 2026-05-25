@@ -5,14 +5,21 @@
 # when we add a graphhopper/CHANGES.md heartbeat.
 #
 # Build context: this directory (graphhopper/). Run from the project root with:
-#   gcloud builds submit graphhopper --config=graphhopper/cloudbuild.yaml
+#   gcloud builds submit graphhopper --config=graphhopper/cloudbuild.yaml \
+#     --substitutions=_TAG=$(git rev-parse --short HEAD)
+#
+# _TAG defaults to "manual" so the file is also usable without arguments.
+# A GitHub trigger should pass _TAG=$SHORT_SHA in its substitutions config.
+
+substitutions:
+  _TAG: manual
 
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
     args:
       - build
-      - --tag=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:$SHORT_SHA
+      - --tag=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:${_TAG}
       - --tag=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:latest
       - .
 
@@ -30,7 +37,7 @@ steps:
       - run
       - deploy
       - cotswolds-graphhopper
-      - --image=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:$SHORT_SHA
+      - --image=europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:${_TAG}
       - --region=europe-west2
       - --port=8989
       - --memory=4Gi
@@ -51,5 +58,5 @@ options:
 timeout: 1800s
 
 images:
-  - europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:$SHORT_SHA
+  - europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:${_TAG}
   - europe-west2-docker.pkg.dev/$PROJECT_ID/cotswolds/graphhopper:latest

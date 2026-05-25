@@ -1,0 +1,14 @@
+# Cloud Build upload exclusions. When this file exists gcloud ignores
+# .gitignore, which is what we want — the jar and the .pbf are
+# git-ignored locally (too large to commit) but MUST be uploaded as
+# build context so the Dockerfile builder stage can encode the graph.
+
+# Rebuilt by the Dockerfile builder stage from the .pbf.
+graph-cache/
+
+# Dev-only config — the image uses config.prod.yml.
+config.yml
+
+# Noise.
+*.log
+.DS_Store
