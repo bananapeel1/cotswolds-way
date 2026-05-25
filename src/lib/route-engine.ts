@@ -462,11 +462,44 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
 
 // ─── Cache-aware public entry ───────────────────────────────────────────────
 
-export async function findOrGenerate(req: LoopRequest): Promise<LoopResult | null> {
+/**
+ * Thrown when an upstream dependency the engine needs (GraphHopper,
+ * Open-Meteo, Supabase) is unreachable. The API layer catches this to
+ * return a structured 503 `service_degraded` instead of a generic 500.
+ *
+ * Use the `service` field for diagnostic logging — it surfaces in the
+ * `[routes-engine] outcome=degraded reason=...` metric line.
+ */
+export class ServiceDegradedError extends Error {
+  constructor(public readonly service: string) {
+    super(`service degraded: ${service}`);
+    this.name = "ServiceDegradedError";
+  }
+}
+
+export interface FindOrGenerateOptions {
+  /**
+   * Called only when the cache misses, before invoking generateLoop. Use to
+   * assert that downstream services (e.g., GraphHopper) are reachable.
+   * Throw — typically a ServiceDegradedError — to abort generation; the
+   * throw propagates to the caller of findOrGenerate.
+   *
+   * The hook is intentionally not run on cache hits so warm-path latency
+   * doesn't pay for a service we won't call.
+   */
+  beforeGenerate?: () => Promise<void>;
+}
+
+export async function findOrGenerate(
+  req: LoopRequest,
+  opts: FindOrGenerateOptions = {},
+): Promise<LoopResult | null> {
   const cacheKey = buildCacheKey(req);
 
   const cached = await findCached(cacheKey);
   if (cached) return applyCustomizations(cached, req);
+
+  if (opts.beforeGenerate) await opts.beforeGenerate();
 
   const fresh = await generateLoop(req);
   if (!fresh) return null;

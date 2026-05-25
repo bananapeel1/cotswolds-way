@@ -4,6 +4,7 @@ import {
   findOrGenerate,
   pingGraphHopper,
   setNarrative,
+  ServiceDegradedError,
   ENGINE_VERSION,
   type LoopResult,
   type Theme,
@@ -88,47 +89,51 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ─── GraphHopper liveness ─────────────────────────────────────────────────
-  // 500ms timeout: Cloud Run intra-region calls land in <50ms, so half a second
-  // is comfortable headroom. On miss we return a structured 503 instead of
-  // letting findOrGenerate fail opaquely as a 404 "no loop found".
-  //
-  // Cost on the happy path: ~30ms even on cache hits. Worth it — the
-  // alternative is users seeing "no loop in this area" during a GH outage,
-  // which masks the real failure mode.
-  const ghAlive = await pingGraphHopper(500);
-  if (!ghAlive) {
-    logMetric({
-      outcome: "degraded",
-      reason: "graphhopper_unreachable",
-      theme: body.theme,
-      km: body.km,
-      total_ms: Date.now() - t0,
-      engine_version: ENGINE_VERSION,
-    });
-    return Response.json(
-      {
-        error: "service_degraded",
-        message:
-          "Route generation is temporarily unavailable while the routing service restarts. Try again in 30 seconds.",
-      },
-      { status: 503, headers: { "Retry-After": "30" } },
-    );
-  }
-
   // ─── Generate or fetch from cache ─────────────────────────────────────────
+  // The GraphHopper liveness check is now inside `beforeGenerate`, so it only
+  // runs on cache miss (when we actually need GH). Pre-Milestone-D-batch-2
+  // we pinged unconditionally, which added 500ms to every cache-hit response
+  // — bad for the warm path that's most of production traffic.
   let loop: LoopResult | null;
   try {
-    loop = await findOrGenerate({
-      startLat: body.lat,
-      startLng: body.lng,
-      targetKm: body.km,
-      theme: body.theme as Theme,
-      difficulty: body.difficulty,
-      pace: body.pace,
-      lunchStop: body.lunchStop,
-    });
+    loop = await findOrGenerate(
+      {
+        startLat: body.lat,
+        startLng: body.lng,
+        targetKm: body.km,
+        theme: body.theme as Theme,
+        difficulty: body.difficulty,
+        pace: body.pace,
+        lunchStop: body.lunchStop,
+      },
+      {
+        beforeGenerate: async () => {
+          const ghAlive = await pingGraphHopper(500);
+          if (!ghAlive) {
+            throw new ServiceDegradedError("graphhopper_unreachable");
+          }
+        },
+      },
+    );
   } catch (err) {
+    if (err instanceof ServiceDegradedError) {
+      logMetric({
+        outcome: "degraded",
+        reason: err.service,
+        theme: body.theme,
+        km: body.km,
+        total_ms: Date.now() - t0,
+        engine_version: ENGINE_VERSION,
+      });
+      return Response.json(
+        {
+          error: "service_degraded",
+          message:
+            "Route generation is temporarily unavailable while the routing service restarts. Try again in 30 seconds.",
+        },
+        { status: 503, headers: { "Retry-After": "30" } },
+      );
+    }
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[routes-engine] findOrGenerate threw:", err);
     logMetric({

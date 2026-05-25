@@ -27,7 +27,7 @@ A trail-native accommodation booking platform for the Cotswold Way (102-mile Nat
 
 ## Commands
 - `npm run dev` — Start dev server on port 3000 (**requires Node.js 20** — use `PATH="/opt/homebrew/opt/node@20/bin:$PATH" npm run dev`)
-- `npm run build` — Production build
+- `npm run build` — Production build. **Run this before pushing** — it executes Next.js's own typecheck, which is stricter than `npx tsc --noEmit` (it catches variable shadowing, for example). App Hosting's silent build failure path means a tsc-only check has bitten us before; `npm run build` matches what Cloud Build runs.
 - `npm run lint` — ESLint
 
 ## Local services
