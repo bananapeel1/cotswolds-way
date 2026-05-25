@@ -6,8 +6,7 @@
  *   generateLoop(req)     — full algorithm, no caching. Slow.
  *   scoreLoop(loop, req)  — scoring function (exported for inspection/testing).
  *   buildCacheKey(req)    — deterministic cache key for a request.
- *   pingGraphHopper()     — cheap liveness probe; lets callers distinguish
- *                           "GH unreachable" from "no loop in this area".
+ *   pingGraphHopper()     — liveness probe (kept for external health checks).
  *
  * Routing backend: GraphHopper (local HTTP server, `algorithm=round_trip`).
  * Set GRAPHHOPPER_URL env var to override the default http://localhost:8989.
@@ -277,6 +276,13 @@ async function callGraphhopperRoundTrip(
     const res = await ghFetch(path, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      // 401/403 = IAM misconfiguration; 503 = GH container down.
+      // Both are service-level faults, not "no route found" — surface them
+      // as ServiceDegradedError so the API returns a structured 503 instead
+      // of silently collapsing to a 404 "no_loop_found".
+      if (res.status === 401 || res.status === 403 || res.status >= 500) {
+        throw new ServiceDegradedError("graphhopper_http_" + res.status);
+      }
       console.warn("[route-engine] GH returned", res.status, text.slice(0, 200));
       return null;
     }
@@ -295,8 +301,9 @@ async function callGraphhopperRoundTrip(
       distanceM: ghPath.distance,
     };
   } catch (err) {
-    console.warn("[route-engine] GH round_trip threw:", err);
-    return null;
+    if (err instanceof ServiceDegradedError) throw err;
+    // Network error (connection refused, DNS failure, timeout) — GH is down.
+    throw new ServiceDegradedError("graphhopper_unreachable");
   }
 }
 
@@ -486,29 +493,13 @@ export class ServiceDegradedError extends Error {
   }
 }
 
-export interface FindOrGenerateOptions {
-  /**
-   * Called only when the cache misses, before invoking generateLoop. Use to
-   * assert that downstream services (e.g., GraphHopper) are reachable.
-   * Throw — typically a ServiceDegradedError — to abort generation; the
-   * throw propagates to the caller of findOrGenerate.
-   *
-   * The hook is intentionally not run on cache hits so warm-path latency
-   * doesn't pay for a service we won't call.
-   */
-  beforeGenerate?: () => Promise<void>;
-}
-
 export async function findOrGenerate(
   req: LoopRequest,
-  opts: FindOrGenerateOptions = {},
 ): Promise<LoopResult | null> {
   const cacheKey = buildCacheKey(req);
 
   const cached = await findCached(cacheKey);
   if (cached) return applyCustomizations(cached, req);
-
-  if (opts.beforeGenerate) await opts.beforeGenerate();
 
   const fresh = await generateLoop(req);
   if (!fresh) return null;

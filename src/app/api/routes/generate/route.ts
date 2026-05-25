@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import {
   findOrGenerate,
-  pingGraphHopper,
   setNarrative,
   ServiceDegradedError,
   ENGINE_VERSION,
@@ -90,10 +89,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── Generate or fetch from cache ─────────────────────────────────────────
-  // The GraphHopper liveness check is now inside `beforeGenerate`, so it only
-  // runs on cache miss (when we actually need GH). Pre-Milestone-D-batch-2
-  // we pinged unconditionally, which added 500ms to every cache-hit response
-  // — bad for the warm path that's most of production traffic.
+  // ServiceDegradedError is thrown directly from callGraphhopperRoundTrip
+  // when GH returns 4xx/5xx or a network error, so no pre-flight ping is
+  // needed here. The previous beforeGenerate ping was both fragile (its
+  // AbortSignal raced against the OIDC token fetch) and redundant.
   let loop: LoopResult | null;
   try {
     loop = await findOrGenerate(
@@ -105,14 +104,6 @@ export async function POST(req: NextRequest) {
         difficulty: body.difficulty,
         pace: body.pace,
         lunchStop: body.lunchStop,
-      },
-      {
-        beforeGenerate: async () => {
-          const ghAlive = await pingGraphHopper(2000);
-          if (!ghAlive) {
-            throw new ServiceDegradedError("graphhopper_unreachable");
-          }
-        },
       },
     );
   } catch (err) {
