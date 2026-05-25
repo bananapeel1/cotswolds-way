@@ -514,13 +514,20 @@ export async function findOrGenerate(
 async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
   const sb = getAdminClient();
   // Don't cache synthetic (-1) midpoints — they carry no real POI signal.
-  // Also guard against POI IDs that can't be safely passed to Supabase:
-  // large OSM BIGINTs (some > 2^53) cause PostgREST to overflow its integer
-  // parser even when the column type is BIGINT. Fall back to null so the
-  // route persists; the UI falls back to the geometric midpoint coordinate.
+  // Also guard against POI IDs that overflow PostgREST's integer parser:
+  // PostgREST coerces JSON integers to 4-byte PostgreSQL INTEGER (not BIGINT)
+  // even when the RPC parameter is declared BIGINT. Any value > 2,147,483,647
+  // causes "out of range for type integer". We also see artifact IDs in the
+  // 10^15 range from floating-point rounding in candidate_midpoint_pois — those
+  // don't exist in the pois table and would trigger a FK violation anyway.
+  // Fall back to null; the UI uses the geometric midpoint coordinate instead.
   const rawId = loop.midpointPoi.id;
+  // PostgREST max: 2^31-1 = 2,147,483,647
+  const MAX_POSTGREST_INT = 2_147_483_647;
   const poiId =
-    rawId >= 0 && Number.isSafeInteger(rawId) ? rawId : null;
+    rawId >= 0 && Number.isSafeInteger(rawId) && rawId <= MAX_POSTGREST_INT
+      ? rawId
+      : null;
   const { error } = await sb.rpc("upsert_route", {
     p_cache_key: loop.cacheKey,
     p_start_lng: req.startLng,
