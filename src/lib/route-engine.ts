@@ -514,7 +514,13 @@ export async function findOrGenerate(
 async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
   const sb = getAdminClient();
   // Don't cache synthetic (-1) midpoints — they carry no real POI signal.
-  const poiId = loop.midpointPoi.id >= 0 ? loop.midpointPoi.id : null;
+  // Also guard against POI IDs that can't be safely passed to Supabase:
+  // large OSM BIGINTs (some > 2^53) cause PostgREST to overflow its integer
+  // parser even when the column type is BIGINT. Fall back to null so the
+  // route persists; the UI falls back to the geometric midpoint coordinate.
+  const rawId = loop.midpointPoi.id;
+  const poiId =
+    rawId >= 0 && Number.isSafeInteger(rawId) ? rawId : null;
   const { error } = await sb.rpc("upsert_route", {
     p_cache_key: loop.cacheKey,
     p_start_lng: req.startLng,
