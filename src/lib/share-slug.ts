@@ -31,5 +31,17 @@ export function cacheKeyToSlug(cacheKey: string): string {
 }
 
 export function slugToCacheKey(slug: string): string {
-  return slug.replace(/~/g, "=").replace(/_/g, "|");
+  // Decode percent-encoding first. Cache keys contain a comma (lat,lng), which
+  // browsers encode to %2C in the URL path. Next.js page params arrive
+  // un-decoded (unlike Route Handler params), so without this the %2C survives
+  // into the cache key and the lookup misses → a 404 on every share link.
+  // decodeURIComponent is a no-op on already-decoded input; guard against the
+  // rare malformed-% case so it never throws.
+  let decoded = slug;
+  try {
+    decoded = decodeURIComponent(slug);
+  } catch {
+    // leave as-is if the slug isn't valid percent-encoding
+  }
+  return decoded.replace(/~/g, "=").replace(/_/g, "|");
 }
