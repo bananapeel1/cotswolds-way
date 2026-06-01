@@ -34,6 +34,10 @@ export default async function SharedWalkPage({ params }: PageProps) {
   const { slug } = await params;
   const cacheKey = slugToCacheKey(slug);
   const route = await findCached(cacheKey);
+  // TEMP diagnostic: why does this page 404 for routes the GPX handler resolves?
+  console.log(
+    `[walks/r/page] slug=${slug} cacheKey=${cacheKey} found=${!!route}`,
+  );
   if (!route) notFound();
   return <SharedWalkClient route={route} slug={slug} />;
 }
