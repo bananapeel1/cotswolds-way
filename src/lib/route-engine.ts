@@ -391,14 +391,23 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
     // before giving up and synthesising a midpoint.
     const lunchPref = req.lunchStop ?? "preferred";
 
+    // Always search theme-AGNOSTICALLY (theme_filter "any" hits the function's
+    // ELSE-true branch → every POI in the band). The pois table's terrain_class
+    // is currently uniformly 'mixed' (the terrain backfill never classified
+    // ridge/valley/woodland), so a hard theme filter matches almost nothing and
+    // leaves most routes with a synthetic midpoint (the 21/180 SEO symptom).
+    // Instead we fetch a generous candidate set and use terrain_class only as a
+    // soft ranking tiebreak (themeMatches), which auto-activates once the
+    // terrain data is fixed. A POI within ~1.5 km of the route's midpoint is
+    // geographically appropriate regardless of its terrain label.
     const fetchPois = async (bandHiM: number): Promise<CandidateRow[]> => {
       const res = await sb.rpc("candidate_midpoint_pois", {
         start_lng: midpoint[0],
         start_lat: midpoint[1],
-        theme_filter: lunchPref === "required" ? "any" : req.theme,
+        theme_filter: "any",
         band_lo_m: 0,
         band_hi_m: bandHiM,
-        max_candidates: lunchPref === "required" ? 40 : 5,
+        max_candidates: 40,
       });
       return (res.data ?? []) as CandidateRow[];
     };
@@ -406,16 +415,17 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
     const themeMatches = (p: CandidateRow): boolean =>
       p.terrain_class === req.theme;
 
+    // Tiebreak: theme-matching terrain first, then higher scenic score.
+    const byThemeThenScenic = (a: CandidateRow, b: CandidateRow): number => {
+      const t = Number(themeMatches(b)) - Number(themeMatches(a));
+      if (t !== 0) return t;
+      return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+    };
+
     const rankRows = (rows: CandidateRow[]): CandidateRow[] => {
       if (lunchPref === "required") {
-        // Keep only lunch stops; prefer theme-matching, then scenic.
-        return rows
-          .filter((p) => p.is_lunch_stop)
-          .sort((a, b) => {
-            const t = Number(themeMatches(b)) - Number(themeMatches(a));
-            if (t !== 0) return t;
-            return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
-          });
+        // Lunch stops only; best theme-fit + scenic first.
+        return rows.filter((p) => p.is_lunch_stop).sort(byThemeThenScenic);
       }
       if (lunchPref === "none") {
         // Non-lunch first; users picking "none" want viewpoints, peaks, or
@@ -423,14 +433,14 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
         return [...rows].sort((a, b) => {
           const lunchDelta = Number(a.is_lunch_stop) - Number(b.is_lunch_stop);
           if (lunchDelta !== 0) return lunchDelta;
-          return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+          return byThemeThenScenic(a, b);
         });
       }
-      // preferred: lunch stops first, then by scenic_score within each tier.
+      // preferred: lunch stops first, then best theme-fit + scenic within tier.
       return [...rows].sort((a, b) => {
         const lunchDelta = Number(b.is_lunch_stop) - Number(a.is_lunch_stop);
         if (lunchDelta !== 0) return lunchDelta;
-        return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+        return byThemeThenScenic(a, b);
       });
     };
 
