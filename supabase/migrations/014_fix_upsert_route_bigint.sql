@@ -39,6 +39,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_poi_id BIGINT := NULL;
+  v_id UUID;
 BEGIN
   -- Only use the POI FK if the text value looks like a non-negative integer
   -- AND the row actually exists in pois (otherwise silently drop it so the
@@ -57,31 +58,31 @@ BEGIN
     END;
   END IF;
 
-  RETURN (
-    INSERT INTO routes (
-      cache_key, start_location, theme, target_km, actual_km,
-      ascent_m, duration_min, midpoint_poi_id, geometry, score,
-      narrative, slug, is_seo_page, engine_version, updated_at
-    )
-    VALUES (
-      p_cache_key,
-      ST_SetSRID(ST_MakePoint(p_start_lng, p_start_lat), 4326)::geography,
-      p_theme, p_target_km, p_actual_km,
-      p_ascent_m, p_duration_min, v_poi_id,
-      ST_GeomFromGeoJSON(p_geometry_geojson)::geography,
-      p_score, p_narrative, p_slug, p_is_seo_page, p_engine_version,
-      now()
-    )
-    ON CONFLICT (cache_key) DO UPDATE SET
-      actual_km      = EXCLUDED.actual_km,
-      ascent_m       = EXCLUDED.ascent_m,
-      duration_min   = EXCLUDED.duration_min,
-      midpoint_poi_id = EXCLUDED.midpoint_poi_id,
-      geometry       = EXCLUDED.geometry,
-      score          = EXCLUDED.score,
-      narrative      = EXCLUDED.narrative,
-      updated_at     = now()
-    RETURNING id
-  );
+  INSERT INTO routes (
+    cache_key, start_location, theme, target_km, actual_km,
+    ascent_m, duration_min, midpoint_poi_id, geometry, score,
+    narrative, slug, is_seo_page, engine_version, updated_at
+  )
+  VALUES (
+    p_cache_key,
+    ST_SetSRID(ST_MakePoint(p_start_lng, p_start_lat), 4326)::geography,
+    p_theme, p_target_km, p_actual_km,
+    p_ascent_m, p_duration_min, v_poi_id,
+    ST_GeomFromGeoJSON(p_geometry_geojson)::geography,
+    p_score, p_narrative, p_slug, p_is_seo_page, p_engine_version,
+    now()
+  )
+  ON CONFLICT (cache_key) DO UPDATE SET
+    actual_km       = EXCLUDED.actual_km,
+    ascent_m        = EXCLUDED.ascent_m,
+    duration_min    = EXCLUDED.duration_min,
+    midpoint_poi_id = EXCLUDED.midpoint_poi_id,
+    geometry        = EXCLUDED.geometry,
+    score           = EXCLUDED.score,
+    narrative       = EXCLUDED.narrative,
+    updated_at      = now()
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
 END;
 $$;
