@@ -19,6 +19,13 @@ import SharedWalkClient from "./SharedWalkClient";
  * client-side, and Mapbox edge-caches identical URLs.
  */
 
+// Bespoke share routes are persisted on demand (after build), so this page
+// must render fresh per request — never statically optimised or CDN-cached.
+// Without this, a freshly-generated walk's permalink 404s because Next/FAH
+// serves a stale negative result. (The SEO pages at /walks/[slug] stay static
+// on purpose; only these share permalinks opt into dynamic rendering.)
+export const dynamic = "force-dynamic";
+
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
