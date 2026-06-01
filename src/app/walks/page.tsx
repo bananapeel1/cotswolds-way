@@ -331,7 +331,7 @@ export default function WalksPage() {
           <WalkPlannerMap
             start={mapStart}
             onPickStart={handlePickStart}
-            reachKm={effectiveKm * 0.2}
+            reachKm={effectiveKm * 0.28}
             route={routeOverlay}
           />
         </div>

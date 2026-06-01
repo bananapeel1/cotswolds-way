@@ -155,8 +155,16 @@ export default function WalkPlannerMap({
       startMarker.current.setLngLat([start.lng, start.lat]);
     }
 
-    // Recenter to the start only while designing (no route on screen).
-    if (!route) m.easeTo({ center: [start.lng, start.lat], duration: 500 });
+    // Recenter to the start only while designing (no route on screen). Zoom in
+    // enough that the reach circle is legible — but never zoom the user back out
+    // if they've already zoomed in past that.
+    if (!route) {
+      m.easeTo({
+        center: [start.lng, start.lat],
+        zoom: Math.max(m.getZoom(), 11),
+        duration: 600,
+      });
+    }
   }, [mapReady, start, route]);
 
   // ── Reach circle ───────────────────────────────────────────────────────────
