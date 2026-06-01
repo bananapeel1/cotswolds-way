@@ -17,6 +17,16 @@
 -- JS number or null for this field, both of which PostgREST maps cleanly to
 -- TEXT.
 
+-- Drop the original BIGINT-param overload first. CREATE OR REPLACE does NOT
+-- replace a function when an argument TYPE changes — it adds a second overload,
+-- leaving PostgREST unable to disambiguate ("Could not choose the best
+-- candidate function between ... p_midpoint_poi_id => bigint ... / ... => text").
+-- Dropping the old signature leaves only the TEXT version below.
+DROP FUNCTION IF EXISTS upsert_route(
+  text, double precision, double precision, text, numeric, numeric,
+  integer, integer, bigint, text, numeric, text, text, boolean, text
+);
+
 CREATE OR REPLACE FUNCTION upsert_route(
   p_cache_key TEXT,
   p_start_lng DOUBLE PRECISION,
