@@ -25,6 +25,12 @@ const RequestSchema = z.object({
   pace: z.enum(["leisurely", "steady", "brisk"]).default("steady"),
   lunchStop: z.enum(["required", "preferred", "none"]).default("preferred"),
   startLabel: z.string().optional(),
+  // Bespoke per-request route (exact start + distance). Defaults false so the
+  // seed script and any unchanged client keep producing coarse SEO-sample keys.
+  exact: z.boolean().default(false),
+  // Free-text priority from the intent front-door. Re-weights scoring and
+  // steers the narrative. Absent → identical behaviour to before.
+  emphasis: z.string().max(500).optional(),
 });
 
 /**
@@ -104,6 +110,8 @@ export async function POST(req: NextRequest) {
         difficulty: body.difficulty,
         pace: body.pace,
         lunchStop: body.lunchStop,
+        exact: body.exact,
+        emphasis: body.emphasis,
       },
     );
   } catch (err) {
@@ -178,6 +186,7 @@ export async function POST(req: NextRequest) {
         difficulty: body.difficulty,
         pace: body.pace,
         lunchStop: body.lunchStop,
+        emphasis: body.emphasis,
       });
       // Awaited so the DB write completes before Next.js tears down the
       // serverless context. Pre-fix, the fire-and-forget version was racing

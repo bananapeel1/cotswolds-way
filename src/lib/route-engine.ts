@@ -135,6 +135,16 @@ export interface LoopRequest {
   difficulty?: Difficulty;
   pace?: Pace;
   lunchStop?: LunchStop;
+  /** When true, the cache key uses the EXACT start + distance instead of the
+   *  coarse grid/bin bucket — a bespoke, per-request route. Set for
+   *  user-initiated walks; left false for SEO sample pages (which keep the
+   *  coarse, high-reuse key). See buildCacheKey. */
+  exact?: boolean;
+  /** Free-text statement of what the walker most cares about (from the intent
+   *  front-door, e.g. "amazing views and a good pub"). Re-weights scoring and
+   *  steers the narrative. Empty/absent → identical behaviour to before. Does
+   *  NOT affect geometry, so it is NOT part of the cache key. */
+  emphasis?: string;
 }
 
 /** Resolve LoopRequest's optional customization fields to their defaults. */
@@ -144,6 +154,8 @@ export function resolveLoopRequest(req: LoopRequest): Required<LoopRequest> {
     difficulty: req.difficulty ?? "moderate",
     pace: req.pace ?? "steady",
     lunchStop: req.lunchStop ?? "preferred",
+    exact: req.exact ?? false,
+    emphasis: req.emphasis ?? "",
   };
 }
 
@@ -178,18 +190,30 @@ export const ENGINE_VERSION = "v2"; // v2 = GraphHopper backend
 // ─── Cache key ──────────────────────────────────────────────────────────────
 
 export function buildCacheKey(req: LoopRequest): string {
-  // Coarse grid bucket (~2km) collapses near-by postcodes to the same route.
-  // Distance bucketed to 5km bins.
-  //
   // Only params that affect the GEOMETRY belong in the cache key. Difficulty
   // and pace tune score + duration but use the same underlying polyline, so
   // they're re-derived at serve time from the cached ascentM / actualKm.
   // LunchStop = required forces a different POI → different geometry, so it
   // does belong in the key.
+  //
+  // Two tiers (see LoopRequest.exact):
+  //   - bespoke (exact): full-precision start (5dp ≈ 1.1 m) + exact distance
+  //     (1dp ≈ 100 m). Near-zero reuse — that's the point: every user request
+  //     is its own route. Still persisted + shareable (the key avoids '_'/'~'
+  //     so share-slug round-trips it).
+  //   - sample (coarse): ~2 km grid bucket + 5 km distance bins, collapsing
+  //     near-by starts to one route. Powers the pre-seeded SEO pages. UNCHANGED
+  //     from the original format so the 180 existing keys still resolve.
+  const lunch = req.lunchStop ?? "preferred";
+  if (req.exact) {
+    const lat = req.startLat.toFixed(5);
+    const lng = req.startLng.toFixed(5);
+    const km = req.targetKm.toFixed(1);
+    return `exact=${lat},${lng}|km=${km}|theme=${req.theme}|lunch=${lunch}|v=${ENGINE_VERSION}`;
+  }
   const latBucket = (Math.round(req.startLat * 50) / 50).toFixed(2);
   const lngBucket = (Math.round(req.startLng * 50) / 50).toFixed(2);
   const kmBucket = Math.max(5, Math.round(req.targetKm / 5) * 5);
-  const lunch = req.lunchStop ?? "preferred";
   return `grid=${latBucket},${lngBucket}|km=${kmBucket}|theme=${req.theme}|lunch=${lunch}|v=${ENGINE_VERSION}`;
 }
 
@@ -354,40 +378,65 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
     // Find the coord at ~50% of the route (the "lunch stop" area).
     const midpoint = routeMidpointCoord(r.coords);
 
-    // Look for a theme-matching POI within 1.5 km of the midpoint.
-    // For lunchStop=required we ask for a wider candidate set because we'll
-    // filter out non-lunch-stop rows in JS — the SQL function doesn't know
-    // about that constraint and changing its signature would force a
-    // migration we don't need.
+    // POI search around the midpoint. Strategy depends on lunch preference:
+    //   - required:  search theme-AGNOSTICALLY (theme_filter "any" hits the
+    //                function's ELSE-true branch → every POI in the band) so a
+    //                pub that doesn't match the route's terrain still qualifies;
+    //                we keep only lunch stops and prefer theme-matching ones in
+    //                JS. A named lunch stop matters more than terrain when the
+    //                walker explicitly asked for one. This avoids an RPC
+    //                signature change (and the migration coupling it brings).
+    //   - preferred/none: theme-filtered, as before.
+    // If the primary 1.5 km band yields nothing usable, widen once to 2.5 km
+    // before giving up and synthesising a midpoint.
     const lunchPref = req.lunchStop ?? "preferred";
-    const maxCandidates = lunchPref === "required" ? 12 : 3;
-    const poisRes = await sb.rpc("candidate_midpoint_pois", {
-      start_lng: midpoint[0],
-      start_lat: midpoint[1],
-      theme_filter: req.theme,
-      band_lo_m: 0,
-      band_hi_m: 1500,
-      max_candidates: maxCandidates,
-    });
-    let poiRows = (poisRes.data ?? []) as CandidateRow[];
 
-    if (lunchPref === "required") {
-      poiRows = poiRows.filter((p) => p.is_lunch_stop);
-    } else if (lunchPref === "preferred") {
-      // Stable sort: lunch stops first, then by scenic_score within each tier.
-      poiRows = [...poiRows].sort((a, b) => {
+    const fetchPois = async (bandHiM: number): Promise<CandidateRow[]> => {
+      const res = await sb.rpc("candidate_midpoint_pois", {
+        start_lng: midpoint[0],
+        start_lat: midpoint[1],
+        theme_filter: lunchPref === "required" ? "any" : req.theme,
+        band_lo_m: 0,
+        band_hi_m: bandHiM,
+        max_candidates: lunchPref === "required" ? 40 : 5,
+      });
+      return (res.data ?? []) as CandidateRow[];
+    };
+
+    const themeMatches = (p: CandidateRow): boolean =>
+      p.terrain_class === req.theme;
+
+    const rankRows = (rows: CandidateRow[]): CandidateRow[] => {
+      if (lunchPref === "required") {
+        // Keep only lunch stops; prefer theme-matching, then scenic.
+        return rows
+          .filter((p) => p.is_lunch_stop)
+          .sort((a, b) => {
+            const t = Number(themeMatches(b)) - Number(themeMatches(a));
+            if (t !== 0) return t;
+            return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+          });
+      }
+      if (lunchPref === "none") {
+        // Non-lunch first; users picking "none" want viewpoints, peaks, or
+        // watercourses rather than another pub.
+        return [...rows].sort((a, b) => {
+          const lunchDelta = Number(a.is_lunch_stop) - Number(b.is_lunch_stop);
+          if (lunchDelta !== 0) return lunchDelta;
+          return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+        });
+      }
+      // preferred: lunch stops first, then by scenic_score within each tier.
+      return [...rows].sort((a, b) => {
         const lunchDelta = Number(b.is_lunch_stop) - Number(a.is_lunch_stop);
         if (lunchDelta !== 0) return lunchDelta;
         return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
       });
-    } else if (lunchPref === "none") {
-      // Non-lunch first; users picking "none" likely want viewpoints, peaks,
-      // or watercourses rather than another pub.
-      poiRows = [...poiRows].sort((a, b) => {
-        const lunchDelta = Number(a.is_lunch_stop) - Number(b.is_lunch_stop);
-        if (lunchDelta !== 0) return lunchDelta;
-        return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
-      });
+    };
+
+    let poiRows = rankRows(await fetchPois(1500));
+    if (poiRows.length === 0) {
+      poiRows = rankRows(await fetchPois(2500));
     }
 
     const poi: MidpointPoi | null =
@@ -432,9 +481,10 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
   const elev = await sampleElevation(winner.coords);
   const { ascentM } = integrateElevation(elev);
   const durationHours = toblerHoursForProfile(winner.coords, elev);
-  // Guard against floating-point blow-up (e.g. near-zero velocity on a
-  // degenerate segment producing Infinity or astronomically large hours).
-  // Cap at 24 hours; any real Cotswolds walk is well inside that limit.
+  // Defence-in-depth: toblerHoursForProfile now clamps slope and skips
+  // sub-metre segments, so a blow-up shouldn't reach here — but cap at 24 h
+  // and fall back to a Naismith estimate if a non-finite value ever slips
+  // through. Any real Cotswolds walk is well inside 24 h.
   const rawDurationMin = durationHours * 60;
   const durationMin = Number.isFinite(rawDurationMin)
     ? Math.min(Math.round(rawDurationMin), 24 * 60)
@@ -519,22 +569,14 @@ export async function findOrGenerate(
 
 async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
   const sb = getAdminClient();
-  // Don't cache synthetic (-1) midpoints — they carry no real POI signal.
-  // Also guard against POI IDs that overflow PostgREST's integer parser:
-  // PostgREST coerces JSON integers to 4-byte PostgreSQL INTEGER (not BIGINT)
-  // even when the RPC parameter is declared BIGINT. Any value > 2,147,483,647
-  // causes "out of range for type integer". We also see artifact IDs in the
-  // 10^15 range from floating-point rounding in candidate_midpoint_pois — those
-  // don't exist in the pois table and would trigger a FK violation anyway.
-  // Fall back to null; the UI uses the geometric midpoint coordinate instead.
   const rawId = loop.midpointPoi.id;
-  // PostgREST max: 2^31-1 = 2,147,483,647
-  const MAX_POSTGREST_INT = 2_147_483_647;
-  const poiId =
-    rawId >= 0 && Number.isSafeInteger(rawId) && rawId <= MAX_POSTGREST_INT
-      ? rawId
-      : null;
-  const { error } = await sb.rpc("upsert_route", {
+  // Only consider non-negative real ids. Synthetic (-1) midpoints carry no POI
+  // signal and become null (the UI uses the geometric midpoint coordinate).
+  const validId =
+    rawId >= 0 && Number.isSafeInteger(rawId) ? rawId : null;
+
+  // upsert_route's row payload, minus the POI id (filled in per-attempt below).
+  const baseArgs = {
     p_cache_key: loop.cacheKey,
     p_start_lng: req.startLng,
     p_start_lat: req.startLat,
@@ -543,12 +585,33 @@ async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
     p_actual_km: loop.actualKm,
     p_ascent_m: loop.ascentM,
     p_duration_min: loop.durationMin,
-    p_midpoint_poi_id: poiId,
     p_geometry_geojson: JSON.stringify(loop.geometry),
     p_score: loop.score,
     p_narrative: loop.narrative,
+    p_is_seo_page: false,
     p_engine_version: ENGINE_VERSION,
+  };
+
+  // Preferred path — requires migration 014 (p_midpoint_poi_id is TEXT).
+  // Passing the id as a STRING makes PostgREST serialise it as text, sidestepping
+  // its INT4 coercion bug (ids > 2,147,483,647 — most real OSM ids — otherwise
+  // fail with "out of range for type integer"). The 014 function validates the
+  // text, casts to BIGINT, and FK-checks pois (null if absent). If 014 is NOT
+  // yet applied the BIGINT function rejects the text arg; we then fall back to
+  // the legacy number form (INT4-capped, large ids null'd) so routes still
+  // persist. This keeps the deploy safe regardless of migration timing.
+  let { error } = await sb.rpc("upsert_route", {
+    ...baseArgs,
+    p_midpoint_poi_id: validId === null ? null : String(validId),
   });
+  if (error) {
+    const capped =
+      validId !== null && validId <= 2_147_483_647 ? validId : null;
+    ({ error } = await sb.rpc("upsert_route", {
+      ...baseArgs,
+      p_midpoint_poi_id: capped,
+    }));
+  }
   if (error) {
     console.warn("[route-engine] failed to persist route:", error.message);
   }
@@ -673,8 +736,53 @@ function elevationFitness(ascentM: number, difficulty: Difficulty): number {
   return Math.exp(-Math.pow((ascentM - ideal[difficulty]) / tolerance[difficulty], 2));
 }
 
+interface ScoreWeights {
+  distanceFit: number;
+  overlap: number;
+  road: number;
+  poi: number;
+  elevation: number;
+  time: number;
+}
+
+/** Baseline scoring weights (sum to 1.0). Used verbatim when the request
+ *  carries no emphasis — so SEO sample scoring is unchanged. */
+const BASE_WEIGHTS: ScoreWeights = {
+  distanceFit: 0.35,
+  overlap: 0.2,
+  road: 0.2,
+  poi: 0.1,
+  elevation: 0.1,
+  time: 0.05,
+};
+
+/**
+ * Re-weight the score from the walker's free-text emphasis. Empty emphasis
+ * returns BASE_WEIGHTS unchanged (the backward-compatibility guarantee). Any
+ * recognised cue bumps the relevant term, then we renormalise to sum 1.0 so
+ * the score stays in [0, 1]. Keyword matching only — no LLM in the hot loop.
+ */
+function emphasisWeights(emphasis: string): ScoreWeights {
+  const e = emphasis.toLowerCase().trim();
+  if (!e) return BASE_WEIGHTS;
+  const w = { ...BASE_WEIGHTS };
+  if (/\b(view|views|scen|vista|panoram|lookout)/.test(e)) w.poi += 0.2;
+  if (/\b(flat|gentle|easy|level|knee|accessible)/.test(e)) w.elevation += 0.2;
+  if (/(quiet|peaceful|secluded|traffic|off.?road|away from)/.test(e)) w.road += 0.15;
+  const sum = w.distanceFit + w.overlap + w.road + w.poi + w.elevation + w.time;
+  return {
+    distanceFit: w.distanceFit / sum,
+    overlap: w.overlap / sum,
+    road: w.road / sum,
+    poi: w.poi / sum,
+    elevation: w.elevation / sum,
+    time: w.time / sum,
+  };
+}
+
 export function scoreLoop(s: ScoreInputs, req: LoopRequest): number {
   const difficulty = req.difficulty ?? "moderate";
+  const w = emphasisWeights(req.emphasis ?? "");
   const distanceFit = Math.max(0, 1 - Math.abs(s.actualKm - req.targetKm) / req.targetKm);
   const overlapPenalty = Math.max(0, 1 - s.overlap);
   const roadAvoidance = Math.max(0, 1 - s.roadM / Math.max(1, s.actualKm * 1000));
@@ -686,12 +794,12 @@ export function scoreLoop(s: ScoreInputs, req: LoopRequest): number {
   const timeFeasibility = s.durationMin <= 8 * 60 ? 1 : 0;
 
   return (
-    distanceFit * 0.35 +
-    overlapPenalty * 0.20 +
-    roadAvoidance * 0.20 +
-    poiBonus * 0.10 +
-    elevationFit * 0.10 +
-    timeFeasibility * 0.05
+    distanceFit * w.distanceFit +
+    overlapPenalty * w.overlap +
+    roadAvoidance * w.road +
+    poiBonus * w.poi +
+    elevationFit * w.elevation +
+    timeFeasibility * w.time
   );
 }
 
@@ -816,9 +924,15 @@ function toblerHoursForProfile(coords: Coord[], elevations: number[]): number {
   let hours = 0;
   for (let i = 1; i < coords.length; i++) {
     const dKm = haversineKm(coords[i - 1], coords[i]);
-    if (dKm === 0) continue;
+    // Skip sub-metre segments. Near-coincident GraphHopper vertices carry no
+    // real walking time, and dividing a non-trivial elevation delta by a tiny
+    // dKm produces an astronomical slope → near-zero velocity → a duration
+    // blow-up (the 6,108,476,011,791,251-minute bug). 1 mm threshold.
+    if (dKm < 0.001) continue;
     const dzKm = (eMap(i) - eMap(i - 1)) / 1000;
-    const slope = dzKm / dKm;
+    // Clamp slope to ±150% grade. No real footpath is steeper; this bounds the
+    // exponential so v can never collapse toward zero on a degenerate segment.
+    const slope = Math.max(-1.5, Math.min(1.5, dzKm / dKm));
     const v = 6 * Math.exp(-3.5 * Math.abs(slope + 0.05));
     hours += dKm / v;
   }

@@ -26,7 +26,7 @@ CREATE OR REPLACE FUNCTION upsert_route(
   p_actual_km NUMERIC,
   p_ascent_m INTEGER,
   p_duration_min INTEGER,
-  p_midpoint_poi_id TEXT DEFAULT NULL,   -- was BIGINT; TEXT avoids INT4 coercion
+  p_midpoint_poi_id TEXT,                -- was BIGINT; TEXT avoids INT4 coercion
   p_geometry_geojson TEXT,
   p_score NUMERIC,
   p_narrative TEXT DEFAULT NULL,

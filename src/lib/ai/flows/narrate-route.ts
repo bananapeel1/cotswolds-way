@@ -65,6 +65,9 @@ export interface NarrateRouteInput {
   pace?: Pace;
   /** Tunes paragraph 2's treatment of the midpoint POI. */
   lunchStop?: LunchStop;
+  /** The walker's free-text priority ("amazing views and a good pub"). When
+   *  set, the blurb should speak to it directly. Empty → default voice. */
+  emphasis?: string;
 }
 
 // Per-difficulty voice nudge. Empty string for moderate (default voice).
@@ -106,6 +109,7 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
     difficulty = "moderate",
     pace = "steady",
     lunchStop = "preferred",
+    emphasis = "",
   } = input;
 
   const km = loop.actualKm.toFixed(1);
@@ -142,10 +146,15 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
   // Assemble only the customisation guidance that's non-default. Keeps the
   // prompt short on the common path and gives Gemini sharp signal when the
   // walker actually deviates.
+  const emphasisGuide = emphasis.trim()
+    ? `What the walker most wants from this walk, in their words: "${emphasis.trim()}". Make the blurb speak to this — lead with it where it fits naturally. Never invent facts to satisfy it.`
+    : "";
+
   const customisation = [
     DIFFICULTY_GUIDE[difficulty],
     PACE_GUIDE[pace],
     lunchGuide(lunchStop, midpoint.name),
+    emphasisGuide,
   ]
     .filter(Boolean)
     .join("\n");
@@ -201,16 +210,35 @@ export async function narrateRoute(input: NarrateRouteInput): Promise<string> {
     },
   };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
-  });
+  // Retry on rate-limit (429) and transient server errors (>=500). Batch
+  // seeding (concurrency 4) routinely hit 429s with no retry, which left
+  // ~90% of routes with a null narrative. Other 4xx (bad request, auth) are
+  // permanent — fail fast. Honour Retry-After when present, else 1s/2s/4s.
+  const MAX_ATTEMPTS = 3;
+  let res: Response | undefined;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (res.ok) break;
+    const retryable = res.status === 429 || res.status >= 500;
+    if (!retryable || attempt === MAX_ATTEMPTS - 1) break;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const delayMs =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : 1000 * 2 ** attempt;
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Gemini API error ${res.status}: ${text.slice(0, 200)}`);
+  if (!res || !res.ok) {
+    const text = res ? await res.text().catch(() => "") : "";
+    throw new Error(
+      `Gemini API error ${res?.status ?? "no response"}: ${text.slice(0, 200)}`,
+    );
   }
 
   const json = (await res.json()) as {

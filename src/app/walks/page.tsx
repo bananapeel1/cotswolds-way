@@ -67,6 +67,15 @@ const DISTANCES = [
   { value: 20, label: "20 km", subtitle: "~12.5 mi — long day" },
 ];
 
+/** Snap an arbitrary km value (e.g. inferred from "3 hours") to the nearest
+ *  distance the form offers, so the dropdown stays consistent. */
+function snapKm(n: number): number {
+  return DISTANCES.reduce(
+    (best, d) => (Math.abs(d.value - n) < Math.abs(best - n) ? d.value : best),
+    DISTANCES[0].value,
+  );
+}
+
 const DIFFICULTIES: { value: Difficulty; label: string; hint: string }[] = [
   { value: "easy", label: "Easy", hint: "Low ascent (~75 m), relaxed day" },
   { value: "moderate", label: "Moderate", hint: "Mixed ground (~175 m ascent)" },
@@ -107,6 +116,14 @@ export default function WalksPage() {
   const [result, setResult] = useState<RouteResponse | null>(null);
   const [error, setError] = useState<{ kind: string; message: string } | null>(null);
 
+  // Free-text intent front-door. The description is extracted into form params
+  // (which the walker then confirms/tweaks); emphasis steers scoring + narrative.
+  const [description, setDescription] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [intentNotes, setIntentNotes] = useState<string[]>([]);
+  const [intentError, setIntentError] = useState<string | null>(null);
+  const [emphasis, setEmphasis] = useState("");
+
   // Restore prefs once on mount. We deliberately don't validate the values
   // against the constants — if a value goes stale (e.g. a theme is removed),
   // it'll just look weird in the UI until the user picks again. Cheap fix.
@@ -142,6 +159,62 @@ export default function WalksPage() {
     }
   }, [theme, km, difficulty, pace, lunchStop]);
 
+  // Free-text description → extracted params → pre-filled form. The walker
+  // confirms/tweaks before generating; we never auto-submit. Ambiguities the
+  // model flagged are surfaced so they can check our assumptions.
+  async function describeWalk() {
+    const text = description.trim();
+    if (!text) return;
+    setExtracting(true);
+    setIntentError(null);
+    setIntentNotes([]);
+    try {
+      const res = await fetch("/api/ai/extract-walk-intent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as ApiError;
+        setIntentError(body.message ?? body.error ?? `Request failed (${res.status})`);
+        return;
+      }
+      const data = (await res.json()) as {
+        intent: {
+          theme: Theme;
+          targetKm: number;
+          difficulty: Difficulty;
+          pace: Pace;
+          lunchStop: LunchStop;
+          emphasis: string;
+          ambiguities: string[];
+        };
+        start: Place | null;
+      };
+      const { intent, start: resolvedStart } = data;
+      setTheme(intent.theme);
+      setKm(snapKm(intent.targetKm));
+      setDifficulty(intent.difficulty);
+      setPace(intent.pace);
+      setLunchStop(intent.lunchStop);
+      setEmphasis(intent.emphasis);
+      if (resolvedStart) setStart(resolvedStart);
+      // Reveal customisation so the walker sees what we inferred.
+      if (
+        intent.difficulty !== "moderate" ||
+        intent.pace !== "steady" ||
+        intent.lunchStop !== "preferred"
+      ) {
+        setShowMore(true);
+      }
+      setIntentNotes(intent.ambiguities);
+    } catch (err) {
+      setIntentError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   async function generate() {
     if (!start) return;
     setLoading(true);
@@ -160,6 +233,12 @@ export default function WalksPage() {
           pace,
           lunchStop,
           startLabel: start.label,
+          // Free-text priority (from "Describe your walk"); re-weights scoring
+          // and steers the narrative. Empty when the form was filled manually.
+          emphasis,
+          // Every walk generated here is bespoke to this person's exact start
+          // and distance — not a coarse SEO sample.
+          exact: true,
         }),
       });
       if (!res.ok) {
@@ -222,6 +301,44 @@ export default function WalksPage() {
 
         {/* Controls column */}
         <aside className="flex flex-col gap-4">
+          {/* Intent front-door: describe the walk in plain English; we extract
+              params and pre-fill the form below for confirmation. */}
+          <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
+            <h2 className="font-serif text-lg text-primary">Describe your walk</h2>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Tell us what you fancy in plain English — we&rsquo;ll fill in the form below for
+              you to check.
+            </p>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. an easy 3-hour walk near Painswick with a good pub for lunch"
+              rows={3}
+              className="mt-3 w-full resize-none rounded bg-surface-container-high px-3 py-2 text-sm text-on-surface placeholder:text-on-surface-variant/70"
+            />
+            <button
+              type="button"
+              onClick={describeWalk}
+              disabled={!description.trim() || extracting}
+              className="mt-2 w-full rounded bg-primary px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {extracting ? "Reading…" : "Use this"}
+            </button>
+            {intentError && <p className="mt-2 text-xs text-error">{intentError}</p>}
+            {intentNotes.length > 0 && (
+              <div className="mt-3 rounded bg-surface-container-high p-3 text-xs">
+                <div className="font-medium text-on-surface">
+                  We made a few assumptions — check these below:
+                </div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-on-surface-variant">
+                  {intentNotes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+
           <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
             <h2 className="font-serif text-lg text-primary">Start</h2>
             <div className="mt-3">
