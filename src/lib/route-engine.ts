@@ -913,25 +913,36 @@ function integrateElevation(elev: number[]): { ascentM: number; descentM: number
  */
 function toblerHoursForProfile(coords: Coord[], elevations: number[]): number {
   if (coords.length < 2) return 0;
+  // Elevation at coord i, LINEARLY INTERPOLATED between the two bracketing
+  // samples. The elevation profile has ~80 samples spread over ~351 coords; the
+  // old nearest-index lookup snapped each coord to one sample, so every ~4th
+  // coordinate absorbed the entire elevation delta between two samples (~150 m
+  // apart in reality) across a single ~35 m segment — a 4×-steep spike that
+  // Tobler's exponential punished, inflating duration several-fold (an 11 h
+  // estimate for a 12 km walk). Interpolating spreads each delta over the real
+  // distance, so per-segment slopes are realistic while total ascent is
+  // preserved (piecewise-linear sums to the same sample-to-sample climb).
   const eMap = (i: number) => {
     if (elevations.length === 0) return 150;
-    const idx = Math.min(
-      elevations.length - 1,
-      Math.round((i * (elevations.length - 1)) / Math.max(1, coords.length - 1)),
-    );
-    return elevations[idx] ?? 150;
+    if (elevations.length === 1) return elevations[0] ?? 150;
+    const pos = (i * (elevations.length - 1)) / Math.max(1, coords.length - 1);
+    const lo = Math.floor(pos);
+    const hi = Math.min(elevations.length - 1, lo + 1);
+    const frac = pos - lo;
+    const a = elevations[lo] ?? 150;
+    const b = elevations[hi] ?? 150;
+    return a + (b - a) * frac;
   };
   let hours = 0;
   for (let i = 1; i < coords.length; i++) {
     const dKm = haversineKm(coords[i - 1], coords[i]);
     // Skip sub-metre segments. Near-coincident GraphHopper vertices carry no
-    // real walking time, and dividing a non-trivial elevation delta by a tiny
-    // dKm produces an astronomical slope → near-zero velocity → a duration
-    // blow-up (the 6,108,476,011,791,251-minute bug). 1 mm threshold.
+    // real walking time, and dividing an elevation delta by a tiny dKm produces
+    // an astronomical slope → near-zero velocity → a duration blow-up (the
+    // 6,108,476,011,791,251-minute bug). 1 mm threshold.
     if (dKm < 0.001) continue;
     const dzKm = (eMap(i) - eMap(i - 1)) / 1000;
-    // Clamp slope to ±150% grade. No real footpath is steeper; this bounds the
-    // exponential so v can never collapse toward zero on a degenerate segment.
+    // Clamp slope to ±150% grade as a final guard against any residual noise.
     const slope = Math.max(-1.5, Math.min(1.5, dzKm / dKm));
     const v = 6 * Math.exp(-3.5 * Math.abs(slope + 0.05));
     hours += dKm / v;
