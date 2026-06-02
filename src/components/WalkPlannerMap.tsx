@@ -32,6 +32,12 @@ interface WalkPlannerMapProps {
   reachKm: number;
   /** When set, the generated loop is drawn and the reach circle is hidden. */
   route: RouteOverlay | null;
+  /** Must-pass stops dropped on the map, in order. Rendered as numbered pins. */
+  waypoints?: { lng: number; lat: number }[];
+  /** When true, the next map tap drops a stop instead of moving the start. */
+  addStopMode?: boolean;
+  /** Called when the user taps the map (in add-stop mode) at a valid spot. */
+  onAddWaypoint?: (lng: number, lat: number) => void;
 }
 
 const AONB_CENTER: [number, number] = [
@@ -44,11 +50,15 @@ export default function WalkPlannerMap({
   onPickStart,
   reachKm,
   route,
+  waypoints = [],
+  addStopMode = false,
+  onAddWaypoint,
 }: WalkPlannerMapProps) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const startMarker = useRef<mapboxgl.Marker | null>(null);
   const midMarker = useRef<mapboxgl.Marker | null>(null);
+  const stopMarkers = useRef<mapboxgl.Marker[]>([]);
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -56,6 +66,10 @@ export default function WalkPlannerMap({
   // Latest values reachable from the one-time map event handlers.
   const onPickRef = useRef(onPickStart);
   onPickRef.current = onPickStart;
+  const onAddRef = useRef(onAddWaypoint);
+  onAddRef.current = onAddWaypoint;
+  const addStopModeRef = useRef(addStopMode);
+  addStopModeRef.current = addStopMode;
   const startRef = useRef(start);
   startRef.current = start;
 
@@ -115,7 +129,13 @@ export default function WalkPlannerMap({
         showFlash("That's outside the Cotswolds — pick a spot inside the area.");
         return;
       }
-      onPickRef.current(lng, lat);
+      // In add-stop mode the tap drops a must-pass stop; otherwise it sets/moves
+      // the start.
+      if (addStopModeRef.current && onAddRef.current) {
+        onAddRef.current(lng, lat);
+      } else {
+        onPickRef.current(lng, lat);
+      }
     });
 
     return () => {
@@ -123,6 +143,7 @@ export default function WalkPlannerMap({
       map.current = null;
       startMarker.current = null;
       midMarker.current = null;
+      stopMarkers.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -173,9 +194,23 @@ export default function WalkPlannerMap({
     if (!m || !mapReady) return;
     const src = m.getSource("reach") as mapboxgl.GeoJSONSource | undefined;
     if (!src) return;
-    const show = !route && start && reachKm > 0;
+    // The reach hint only makes sense for a distance-driven loop — once stops
+    // are dropped, the length is whatever routing through them takes.
+    const show = !route && start && reachKm > 0 && waypoints.length === 0;
     src.setData(show ? circle([start.lng, start.lat], reachKm) : emptyFC());
-  }, [mapReady, start, reachKm, route]);
+  }, [mapReady, start, reachKm, route, waypoints.length]);
+
+  // ── Must-pass stop markers ───────────────────────────────────────────────────
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !mapReady) return;
+    stopMarkers.current.forEach((mk) => mk.remove());
+    stopMarkers.current = waypoints.map((w, i) =>
+      new mapboxgl.Marker({ element: makeStopEl(i + 1) })
+        .setLngLat([w.lng, w.lat])
+        .addTo(m),
+    );
+  }, [mapReady, waypoints]);
 
   // ── Route overlay ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -234,9 +269,11 @@ export default function WalkPlannerMap({
   return (
     <div className="relative h-full w-full">
       <div ref={container} className="h-full w-full" />
-      {!start && !error && (
+      {!route && !error && (addStopMode || !start) && (
         <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-primary/90 px-4 py-1.5 text-xs font-medium text-on-primary shadow-md">
-          Tap the map to set your start point
+          {addStopMode
+            ? "Tap the map to drop a must-pass stop"
+            : "Tap the map to set your start point"}
         </div>
       )}
       {flash && (
@@ -286,6 +323,16 @@ function makeStartEl(): HTMLDivElement {
     boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
     cursor: "grab",
   } satisfies Partial<CSSStyleDeclaration>);
+  return el;
+}
+
+function makeStopEl(n: number): HTMLDivElement {
+  const el = document.createElement("div");
+  el.textContent = String(n);
+  el.style.cssText =
+    "width:24px;height:24px;border-radius:50%;background:#541600;border:2px solid #ffffff;" +
+    "color:#ffffff;font-size:12px;font-weight:700;font-family:var(--font-sans);display:flex;" +
+    "align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.35);";
   return el;
 }
 

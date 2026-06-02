@@ -31,6 +31,18 @@ const RequestSchema = z.object({
   // Free-text priority from the intent front-door. Re-weights scoring and
   // steers the narrative. Absent → identical behaviour to before.
   emphasis: z.string().max(500).optional(),
+  // Must-pass stops dropped on the map. When present the engine routes a loop
+  // THROUGH them (distance becomes derived). Capped to keep routing bounded.
+  waypoints: z
+    .array(
+      z.object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+        label: z.string().max(120).optional(),
+      }),
+    )
+    .max(5)
+    .optional(),
 });
 
 /**
@@ -112,6 +124,7 @@ export async function POST(req: NextRequest) {
         lunchStop: body.lunchStop,
         exact: body.exact,
         emphasis: body.emphasis,
+        waypoints: body.waypoints,
       },
     );
   } catch (err) {
@@ -187,6 +200,9 @@ export async function POST(req: NextRequest) {
         pace: body.pace,
         lunchStop: body.lunchStop,
         emphasis: body.emphasis,
+        waypointLabels: body.waypoints
+          ?.map((w) => w.label?.trim())
+          .filter((l): l is string => !!l),
       });
       // Awaited so the DB write completes before Next.js tears down the
       // serverless context. Pre-fix, the fire-and-forget version was racing

@@ -140,6 +140,12 @@ export default function WalksPage() {
   const [intentError, setIntentError] = useState<string | null>(null);
   const [emphasis, setEmphasis] = useState("");
 
+  // Must-pass stops the walker drops on the map (route goes through them).
+  const [waypoints, setWaypoints] = useState<
+    { lat: number; lng: number; label: string }[]
+  >([]);
+  const [addStopMode, setAddStopMode] = useState(false);
+
   // The distance actually sent to the engine: in time mode it's derived from
   // the chosen hours and pace; in distance mode the slider sets it directly.
   const speed = PACE_SPEED[pace];
@@ -193,7 +199,7 @@ export default function WalksPage() {
   // design mode (reach circle) rather than showing a stale loop.
   useEffect(() => {
     setResult(null);
-  }, [start?.lng, start?.lat, theme, effectiveKm, difficulty, pace, lunchStop]);
+  }, [start?.lng, start?.lat, theme, effectiveKm, difficulty, pace, lunchStop, waypoints]);
 
   async function handlePickStart(lng: number, lat: number) {
     setStart({ label: "Locating…", context: "", lat, lng, type: "pin" });
@@ -202,6 +208,23 @@ export default function WalksPage() {
     setStart((cur) =>
       cur && cur.lat === lat && cur.lng === lng ? { ...cur, label, context } : cur,
     );
+  }
+
+  async function handleAddWaypoint(lng: number, lat: number) {
+    setAddStopMode(false);
+    setWaypoints((cur) => [...cur, { lat, lng, label: "Locating…" }]);
+    const { label } = await reverseGeocode(lng, lat);
+    setWaypoints((cur) =>
+      cur.map((w) =>
+        w.lat === lat && w.lng === lng && w.label === "Locating…"
+          ? { ...w, label }
+          : w,
+      ),
+    );
+  }
+
+  function removeWaypoint(i: number) {
+    setWaypoints((cur) => cur.filter((_, idx) => idx !== i));
   }
 
   // Free-text description → extracted params → pre-filled controls.
@@ -271,6 +294,9 @@ export default function WalksPage() {
           startLabel: start.label,
           emphasis,
           exact: true,
+          waypoints: waypoints.length
+            ? waypoints.map((w) => ({ lat: w.lat, lng: w.lng, label: w.label }))
+            : undefined,
         }),
       });
       if (!res.ok) {
@@ -313,6 +339,12 @@ export default function WalksPage() {
         : null,
     [result],
   );
+  // Stable coord-only array so the map's stop-marker effect only re-runs when
+  // the stops actually change (not on every parent render).
+  const mapWaypoints = useMemo(
+    () => waypoints.map((w) => ({ lng: w.lng, lat: w.lat })),
+    [waypoints],
+  );
 
   return (
     <main className="min-h-screen bg-surface">
@@ -333,6 +365,9 @@ export default function WalksPage() {
             onPickStart={handlePickStart}
             reachKm={effectiveKm * 0.28}
             route={routeOverlay}
+            waypoints={mapWaypoints}
+            addStopMode={addStopMode}
+            onAddWaypoint={handleAddWaypoint}
           />
         </div>
 
@@ -403,8 +438,65 @@ export default function WalksPage() {
             )}
           </section>
 
-          {/* Length: distance / time toggle + slider */}
+          {/* Must-pass stops */}
           <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-serif text-lg text-primary">Stops</h2>
+              <button
+                type="button"
+                onClick={() => setAddStopMode((v) => !v)}
+                disabled={!start || waypoints.length >= 5}
+                className="text-xs font-medium text-tertiary hover:text-tertiary/80 disabled:cursor-not-allowed disabled:text-on-surface-variant/50"
+              >
+                {addStopMode ? "Tap the map…" : "＋ Add a stop"}
+              </button>
+            </div>
+            {waypoints.length === 0 ? (
+              <p className="mt-2 text-xs text-on-surface-variant">
+                {start
+                  ? "Optional — add a viewpoint or a specific pub and we’ll route the loop through it. Your stops then set the length."
+                  : "Set a start first, then add places the walk must pass through."}
+              </p>
+            ) : (
+              <ol className="mt-3 space-y-2">
+                {waypoints.map((w, i) => (
+                  <li key={`${w.lat},${w.lng}`} className="flex items-center gap-2 text-sm">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-tertiary text-[11px] font-bold text-white">
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 truncate text-on-surface">{w.label}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeWaypoint(i)}
+                      aria-label={`Remove stop ${i + 1}`}
+                      className="px-1 text-on-surface-variant hover:text-error"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {addStopMode && (
+              <p className="mt-2 text-xs text-tertiary">
+                Tap the map to drop stop {waypoints.length + 1}.
+              </p>
+            )}
+          </section>
+
+          {/* Length — derived from stops when present, else a distance/time control */}
+          <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
+            {waypoints.length > 0 ? (
+              <>
+                <h2 className="font-serif text-lg text-primary">Length</h2>
+                <p className="mt-2 text-sm text-on-surface-variant">
+                  Set by your stops — the loop is as long as it takes to walk
+                  through them and back. We&rsquo;ll show the distance once it&rsquo;s
+                  generated.
+                </p>
+              </>
+            ) : (
+              <>
             <div className="flex items-center justify-between">
               <h2 className="font-serif text-lg text-primary">Length</h2>
               <div className="flex rounded-full bg-surface-container-high p-0.5 text-xs">
@@ -461,6 +553,8 @@ export default function WalksPage() {
                   </span>
                 </div>
               </div>
+            )}
+              </>
             )}
           </section>
 

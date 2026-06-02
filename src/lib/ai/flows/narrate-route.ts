@@ -68,6 +68,10 @@ export interface NarrateRouteInput {
   /** The walker's free-text priority ("amazing views and a good pub"). When
    *  set, the blurb should speak to it directly. Empty → default voice. */
   emphasis?: string;
+  /** Names of must-pass stops the walker dropped on the map, in order. When
+   *  present, the route is built to go THROUGH these — the blurb should walk
+   *  the reader past them. */
+  waypointLabels?: string[];
 }
 
 // Per-difficulty voice nudge. Empty string for moderate (default voice).
@@ -110,6 +114,7 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
     pace = "steady",
     lunchStop = "preferred",
     emphasis = "",
+    waypointLabels = [],
   } = input;
 
   const km = loop.actualKm.toFixed(1);
@@ -150,11 +155,19 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
     ? `What the walker most wants from this walk, in their words: "${emphasis.trim()}". Make the blurb speak to this — lead with it where it fits naturally. Never invent facts to satisfy it.`
     : "";
 
+  const stops = waypointLabels.filter(Boolean);
+  const waypointGuide =
+    stops.length > 0
+      ? `The walker chose specific places this route must pass through, in order: ${stops.join(", ")}. The loop is built to go through them — walk the reader past each one in paragraph 2, in route order. These are the heart of the walk; don't treat them as incidental.`
+      : "";
+
   const customisation = [
     DIFFICULTY_GUIDE[difficulty],
     PACE_GUIDE[pace],
-    lunchGuide(lunchStop, midpoint.name),
+    // A chosen stop overrides the generic lunch guidance.
+    stops.length > 0 ? "" : lunchGuide(lunchStop, midpoint.name),
     emphasisGuide,
+    waypointGuide,
   ]
     .filter(Boolean)
     .join("\n");

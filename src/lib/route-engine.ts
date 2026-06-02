@@ -126,15 +126,29 @@ export type Pace = "leisurely" | "steady" | "brisk";
  *  different geometry, so this is part of the cache key. */
 export type LunchStop = "required" | "preferred" | "none";
 
+/** A "must-pass" stop the walker dropped on the map. The loop is routed to go
+ *  through these in order. label is the reverse-geocoded name, for narrative. */
+export interface Waypoint {
+  lat: number;
+  lng: number;
+  label?: string;
+}
+
 export interface LoopRequest {
   startLat: number;
   startLng: number;
-  /** Target loop length in km. Engine accepts ±25% on the actual result. */
+  /** Target loop length in km. Engine accepts ±25% on the actual result.
+   *  Ignored when `waypoints` are present — then the stops set the length. */
   targetKm: number;
   theme: Theme;
   difficulty?: Difficulty;
   pace?: Pace;
   lunchStop?: LunchStop;
+  /** Must-pass stops. When non-empty the engine routes a loop THROUGH them
+   *  (start → stops → start) instead of generating a round_trip of targetKm;
+   *  the distance becomes whatever that takes. Geometry-affecting → part of
+   *  the cache key. */
+  waypoints?: Waypoint[];
   /** When true, the cache key uses the EXACT start + distance instead of the
    *  coarse grid/bin bucket — a bespoke, per-request route. Set for
    *  user-initiated walks; left false for SEO sample pages (which keep the
@@ -156,6 +170,7 @@ export function resolveLoopRequest(req: LoopRequest): Required<LoopRequest> {
     lunchStop: req.lunchStop ?? "preferred",
     exact: req.exact ?? false,
     emphasis: req.emphasis ?? "",
+    waypoints: req.waypoints ?? [],
   };
 }
 
@@ -205,6 +220,18 @@ export function buildCacheKey(req: LoopRequest): string {
   //     near-by starts to one route. Powers the pre-seeded SEO pages. UNCHANGED
   //     from the original format so the 180 existing keys still resolve.
   const lunch = req.lunchStop ?? "preferred";
+  // Must-pass stops define the geometry entirely (start + ordered stops). km,
+  // theme and lunch don't change the polyline in this mode, so they're left out
+  // of the key — only start, the stops, and the engine version matter. (No '_'
+  // or '~' so share-slug round-trips it; the page decodes %2C/%3B.)
+  if (req.waypoints && req.waypoints.length > 0) {
+    const lat = req.startLat.toFixed(5);
+    const lng = req.startLng.toFixed(5);
+    const via = req.waypoints
+      .map((w) => `${w.lat.toFixed(5)},${w.lng.toFixed(5)}`)
+      .join(";");
+    return `exact=${lat},${lng}|via=${via}|v=${ENGINE_VERSION}`;
+  }
   if (req.exact) {
     const lat = req.startLat.toFixed(5);
     const lng = req.startLng.toFixed(5);
@@ -276,6 +303,42 @@ interface GhRoundTripResult {
   distanceM: number;
 }
 
+interface GhPath {
+  points?: { coordinates: number[][] };
+  distance?: number;
+}
+
+/**
+ * Shared GraphHopper request → parsed `paths` array. Centralises error
+ * semantics: 401/403 (IAM) and 5xx (container down) become ServiceDegradedError
+ * so the API returns a structured 503 rather than collapsing to a 404; other
+ * non-OK responses or a missing body return [] (caller treats as "no route").
+ */
+async function ghFetchPaths(path: string): Promise<GhPath[]> {
+  try {
+    const res = await ghFetch(path, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      if (res.status === 401 || res.status === 403 || res.status >= 500) {
+        throw new ServiceDegradedError("graphhopper_http_" + res.status);
+      }
+      console.warn("[route-engine] GH returned", res.status, text.slice(0, 200));
+      return [];
+    }
+    const json = (await res.json()) as { paths?: GhPath[] };
+    return json?.paths ?? [];
+  } catch (err) {
+    if (err instanceof ServiceDegradedError) throw err;
+    // Network error (connection refused, DNS failure, timeout) — GH is down.
+    throw new ServiceDegradedError("graphhopper_unreachable");
+  }
+}
+
+function pathToResult(p: GhPath | undefined): GhRoundTripResult | null {
+  if (!p?.points?.coordinates || typeof p.distance !== "number") return null;
+  return { coords: p.points.coordinates as Coord[], distanceM: p.distance };
+}
+
 /**
  * Call GraphHopper's round_trip algorithm. Returns a closed loop polyline
  * starting and ending at (lat, lng) of approximately targetM metres.
@@ -288,47 +351,49 @@ async function callGraphhopperRoundTrip(
   seed: number,
 ): Promise<GhRoundTripResult | null> {
   const path =
-    `/route` +
-    `?point=${lat},${lng}` +
-    `&profile=hike` +
-    `&algorithm=round_trip` +
-    `&round_trip.distance=${Math.round(targetM)}` +
-    `&round_trip.seed=${seed}` +
+    `/route?point=${lat},${lng}&profile=hike&algorithm=round_trip` +
+    `&round_trip.distance=${Math.round(targetM)}&round_trip.seed=${seed}` +
     `&points_encoded=false`;
+  return pathToResult((await ghFetchPaths(path))[0]);
+}
 
-  try {
-    const res = await ghFetch(path, { signal: AbortSignal.timeout(15_000) });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      // 401/403 = IAM misconfiguration; 503 = GH container down.
-      // Both are service-level faults, not "no route found" — surface them
-      // as ServiceDegradedError so the API returns a structured 503 instead
-      // of silently collapsing to a 404 "no_loop_found".
-      if (res.status === 401 || res.status === 403 || res.status >= 500) {
-        throw new ServiceDegradedError("graphhopper_http_" + res.status);
-      }
-      console.warn("[route-engine] GH returned", res.status, text.slice(0, 200));
-      return null;
-    }
-    const json = (await res.json()) as {
-      paths?: { points?: { coordinates: number[][] }; distance?: number }[];
-    };
-    // Renamed from `path` to avoid colliding with the URL-path variable
-    // above. The outer `path` is the request URL fragment; this is one of
-    // GraphHopper's "paths" — a candidate route.
-    const ghPath = json?.paths?.[0];
-    if (!ghPath?.points?.coordinates || typeof ghPath.distance !== "number") {
-      return null;
-    }
-    return {
-      coords: ghPath.points.coordinates as Coord[],
-      distanceM: ghPath.distance,
-    };
-  } catch (err) {
-    if (err instanceof ServiceDegradedError) throw err;
-    // Network error (connection refused, DNS failure, timeout) — GH is down.
-    throw new ServiceDegradedError("graphhopper_unreachable");
-  }
+/**
+ * Standard GraphHopper routing through an ordered list of points (each
+ * [lng, lat]). Chains start → stop₁ → … → stopₙ → start into a loop when the
+ * walker dropped 2+ must-pass stops.
+ */
+async function callGraphhopperVia(
+  points: Coord[],
+): Promise<GhRoundTripResult | null> {
+  const pts = points.map((c) => `point=${c[1]},${c[0]}`).join("&");
+  return pathToResult(
+    (await ghFetchPaths(`/route?${pts}&profile=hike&points_encoded=false`))[0],
+  );
+}
+
+/**
+ * Loop through a SINGLE must-pass stop. Uses alternative_route to get distinct
+ * outbound/return paths so it's a real loop, not a there-and-back; falls back to
+ * retracing the outbound path when GraphHopper finds no genuine alternative.
+ */
+async function ghAlternativeLoop(
+  start: Coord,
+  wp: Coord,
+): Promise<GhRoundTripResult | null> {
+  const path =
+    `/route?point=${start[1]},${start[0]}&point=${wp[1]},${wp[0]}` +
+    `&profile=hike&algorithm=alternative_route&alternative_route.max_paths=3` +
+    `&points_encoded=false`;
+  const paths = await ghFetchPaths(path);
+  const out = pathToResult(paths[0]);
+  if (!out) return null;
+  const back = pathToResult(paths[1]) ?? out; // distinct return, else retrace
+  // `back` runs start→wp; reverse to wp→start and drop the duplicate junction.
+  const backCoords = back.coords.slice().reverse().slice(1);
+  return {
+    coords: out.coords.concat(backCoords),
+    distanceM: out.distanceM + back.distanceM,
+  };
 }
 
 // ─── Generate ───────────────────────────────────────────────────────────────
@@ -559,6 +624,79 @@ export class ServiceDegradedError extends Error {
   }
 }
 
+/**
+ * Generate a loop that passes THROUGH the request's must-pass stops, in order.
+ * One stop → an alternative_route loop (out one way, back another); two or more
+ * → a via-chain start → stops → start. Distance is whatever the routing
+ * produces. Returns null if GraphHopper can't connect the points.
+ */
+async function generateLoopThroughWaypoints(
+  req: LoopRequest,
+): Promise<LoopResult | null> {
+  const wps = req.waypoints ?? [];
+  if (wps.length === 0) return null;
+
+  const start: Coord = [req.startLng, req.startLat];
+  const wpCoords: Coord[] = wps.map((w) => [w.lng, w.lat]);
+
+  const result =
+    wpCoords.length === 1
+      ? await ghAlternativeLoop(start, wpCoords[0])
+      : await callGraphhopperVia([start, ...wpCoords, start]);
+  if (!result || result.coords.length < 2) return null;
+
+  const { coords, distanceM } = result;
+
+  const elev = await sampleElevation(coords);
+  const { ascentM } = integrateElevation(elev);
+  const durationHours = toblerHoursForProfile(coords, elev);
+  const rawDurationMin = durationHours * 60;
+  const durationMin = Number.isFinite(rawDurationMin)
+    ? Math.min(Math.round(rawDurationMin), 24 * 60)
+    : Math.round((distanceM / 1000) * 15);
+
+  // Single-stop loops retrace more (higher overlap estimate) than spread chains.
+  const overlap = wpCoords.length === 1 ? 0.2 : 0.1;
+  const score = scoreLoop(
+    {
+      actualKm: distanceM / 1000,
+      roadM: 0,
+      overlap,
+      ascentM,
+      durationMin,
+      midpointScenicScore: 6,
+    },
+    req,
+  );
+
+  // Synthetic geometric midpoint — the real "stops" are the walker's pins,
+  // rendered by the designer UI and named in the narrative. Mirrors how
+  // findCached recomputes the midpoint for cached rows with no POI FK.
+  const mid = routeMidpointCoord(coords);
+  const midpointPoi: MidpointPoi = {
+    id: -1,
+    name: "Route midpoint",
+    type: "viewpoint",
+    lng: mid[0],
+    lat: mid[1],
+    scenicScore: 6,
+    terrainClass: null,
+    isLunchStop: false,
+  };
+
+  return {
+    cacheKey: buildCacheKey(req),
+    geometry: { type: "LineString", coordinates: coords },
+    actualKm: Math.round((distanceM / 1000) * 10) / 10,
+    ascentM,
+    durationMin,
+    midpointPoi,
+    score: Math.round(score * 100) / 100,
+    narrative: null,
+    cached: false,
+  };
+}
+
 export async function findOrGenerate(
   req: LoopRequest,
 ): Promise<LoopResult | null> {
@@ -567,7 +705,11 @@ export async function findOrGenerate(
   const cached = await findCached(cacheKey);
   if (cached) return applyCustomizations(cached, req);
 
-  const fresh = await generateLoop(req);
+  // Must-pass stops switch the engine from round_trip to route-through.
+  const fresh =
+    req.waypoints && req.waypoints.length > 0
+      ? await generateLoopThroughWaypoints(req)
+      : await generateLoop(req);
   if (!fresh) return null;
 
   // Persist the baseline (steady-pace, moderate-difficulty) row so other
