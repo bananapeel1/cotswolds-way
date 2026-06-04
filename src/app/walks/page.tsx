@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import WalkPlannerMap from "@/components/WalkPlannerMap";
 import RouteStartPicker, { type Place } from "@/components/RouteStartPicker";
+import RouteNarrative from "@/components/RouteNarrative";
+import { extractFirstBullet } from "@/lib/narrative";
 import { cacheKeyToSlug } from "@/lib/share-slug";
 
 /**
@@ -23,6 +25,8 @@ type Difficulty = "easy" | "moderate" | "strenuous";
 type Pace = "leisurely" | "steady" | "brisk";
 type LunchStop = "required" | "preferred" | "none";
 
+type OpeningStatus = "open" | "closed" | "unknown";
+
 interface MidpointPoi {
   id: number;
   name: string;
@@ -32,6 +36,9 @@ interface MidpointPoi {
   scenicScore: number;
   terrainClass: string | null;
   isLunchStop: boolean;
+  viaPoi: boolean;
+  openingHours: string | null;
+  openingStatus: OpeningStatus;
 }
 
 interface RouteResponse {
@@ -44,6 +51,10 @@ interface RouteResponse {
   midpointPoi: MidpointPoi;
   score: number;
   narrative: string | null;
+}
+
+interface GenerateResponse {
+  candidates: RouteResponse[];
 }
 
 interface ApiError {
@@ -88,6 +99,15 @@ interface PersistedPrefs {
   lunchStop?: LunchStop;
 }
 
+/** Today as YYYY-MM-DD in the user's local timezone (HTML <input type=date>). */
+function todayISO(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 const milesOf = (km: number) => km * 0.621371;
 
@@ -128,10 +148,16 @@ export default function WalksPage() {
   const [difficulty, setDifficulty] = useState<Difficulty>("moderate");
   const [pace, setPace] = useState<Pace>("steady");
   const [lunchStop, setLunchStop] = useState<LunchStop>("preferred");
+  // Defaults to today so the lunchtime open-status check has a sensible probe
+  // even before the user touches the field. Always rendered, but only flagged
+  // as "verify" when lunchStop !== "none".
+  const [walkDate, setWalkDate] = useState<string>(todayISO);
   const [showSearch, setShowSearch] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<RouteResponse | null>(null);
+  const [candidates, setCandidates] = useState<RouteResponse[]>([]);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [error, setError] = useState<{ kind: string; message: string } | null>(null);
+  const activeResult: RouteResponse | null = candidates[activeIdx] ?? null;
 
   // Free-text intent front-door.
   const [description, setDescription] = useState("");
@@ -197,8 +223,11 @@ export default function WalksPage() {
 
   // Changing any input invalidates the drawn route, so the map returns to
   // design mode (reach circle) rather than showing a stale loop.
+  // walkDate is intentionally EXCLUDED — it only affects open-status badges,
+  // not geometry, so we re-render with the new badge without forcing a regen.
   useEffect(() => {
-    setResult(null);
+    setCandidates([]);
+    setActiveIdx(0);
   }, [start?.lng, start?.lat, theme, effectiveKm, difficulty, pace, lunchStop, waypoints]);
 
   async function handlePickStart(lng: number, lat: number) {
@@ -278,7 +307,8 @@ export default function WalksPage() {
     if (!start) return;
     setLoading(true);
     setError(null);
-    setResult(null);
+    setCandidates([]);
+    setActiveIdx(0);
     try {
       const res = await fetch("/api/routes/generate", {
         method: "POST",
@@ -291,6 +321,7 @@ export default function WalksPage() {
           difficulty,
           pace,
           lunchStop,
+          walkDate,
           startLabel: start.label,
           emphasis,
           exact: true,
@@ -307,8 +338,9 @@ export default function WalksPage() {
         });
         return;
       }
-      const data = (await res.json()) as RouteResponse;
-      setResult(data);
+      const data = (await res.json()) as GenerateResponse;
+      setCandidates(data.candidates ?? []);
+      setActiveIdx(0);
     } catch (err) {
       setError({ kind: "network", message: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -326,18 +358,18 @@ export default function WalksPage() {
   );
   const routeOverlay = useMemo(
     () =>
-      result
+      activeResult
         ? {
-            geometry: result.geometry,
+            geometry: activeResult.geometry,
             midpoint: {
-              lng: result.midpointPoi.lng,
-              lat: result.midpointPoi.lat,
-              name: result.midpointPoi.name,
-              type: result.midpointPoi.type,
+              lng: activeResult.midpointPoi.lng,
+              lat: activeResult.midpointPoi.lat,
+              name: activeResult.midpointPoi.name,
+              type: activeResult.midpointPoi.type,
             },
           }
         : null,
-    [result],
+    [activeResult],
   );
   // Stable coord-only array so the map's stop-marker effect only re-runs when
   // the stops actually change (not on every parent render).
@@ -554,6 +586,14 @@ export default function WalksPage() {
                 </div>
               </div>
             )}
+            {/* Honest preview of the engine's tolerance. The router accepts
+                a ±30% spread on round-trip distance, so a 12 km slider can
+                produce 8.4–15.6 km; without this the user is surprised when
+                the result panel shows a different number than the slider. */}
+            <p className="mt-2 text-xs text-on-surface-variant">
+              Actual length will be {(effectiveKm * 0.7).toFixed(1)}–{(effectiveKm * 1.3).toFixed(1)} km
+              (the router fits ±30% to follow real paths).
+            </p>
               </>
             )}
           </section>
@@ -605,6 +645,32 @@ export default function WalksPage() {
               onChange={setLunchStop}
               ends={["Skip", "Must have"]}
             />
+            {/* Walk date powers the open-at-lunchtime verification on the
+                chosen pub. Always shown so the user can plan ahead, but
+                de-emphasised when they've opted out of a lunch stop. */}
+            <div>
+              <div className="flex items-baseline justify-between">
+                <label
+                  htmlFor="walk-date"
+                  className="text-sm font-medium text-on-surface"
+                >
+                  Walking on
+                </label>
+                <span className="text-xs text-on-surface-variant">
+                  {lunchStop === "none"
+                    ? "(for context only)"
+                    : "verifies the pub is open"}
+                </span>
+              </div>
+              <input
+                id="walk-date"
+                type="date"
+                value={walkDate}
+                min={todayISO()}
+                onChange={(e) => setWalkDate(e.target.value)}
+                className="mt-2 w-full rounded bg-surface-container-high px-3 py-2 text-sm text-on-surface"
+              />
+            </div>
           </section>
 
           <button
@@ -621,9 +687,17 @@ export default function WalksPage() {
           )}
 
           {error && <ErrorPanel error={error} />}
-          {result && <ResultPanel result={result} />}
-          {result && <ShareActions cacheKey={result.cacheKey} />}
-          {result?.narrative && <NarrativePanel narrative={result.narrative} />}
+          {candidates.length > 0 && (
+            <CandidateCards
+              candidates={candidates}
+              activeIdx={activeIdx}
+              onPick={setActiveIdx}
+            />
+          )}
+          {activeResult && <ShareActions cacheKey={activeResult.cacheKey} />}
+          {activeResult?.narrative && (
+            <NarrativePanel narrative={activeResult.narrative} />
+          )}
         </aside>
       </div>
     </main>
@@ -694,29 +768,123 @@ function ErrorPanel({ error }: { error: { kind: string; message: string } }) {
   );
 }
 
-function ResultPanel({ result }: { result: RouteResponse }) {
-  const hours = Math.floor(result.durationMin / 60);
-  const mins = (result.durationMin % 60).toString().padStart(2, "0");
+/** Compact lunchtime-open badge. Renders nothing when the route's POI is
+ *  synthetic or the engine couldn't verify, so the result panel stays clean
+ *  when there's nothing meaningful to say. */
+function OpeningBadge({
+  status,
+  spec,
+  className,
+}: {
+  status: OpeningStatus;
+  spec: string | null;
+  className?: string;
+}) {
+  const base =
+    "inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+  if (status === "open") {
+    return (
+      <span
+        className={`${base} bg-primary/15 text-primary ${className ?? ""}`}
+        title={spec ?? "Open at lunchtime"}
+      >
+        Open
+      </span>
+    );
+  }
+  if (status === "closed") {
+    return (
+      <span
+        className={`${base} bg-error/15 text-error ${className ?? ""}`}
+        title={spec ?? "Closed at lunchtime"}
+      >
+        Closed
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`${base} bg-surface-container-high text-on-surface-variant ${className ?? ""}`}
+      title="Opening hours unverified — call ahead"
+    >
+      Unverified
+    </span>
+  );
+}
+
+/** Side-by-side comparison of up to 3 alternative loops for the same request.
+ *  Cards are compact: distance, ascent, time, the midpoint POI, the via/near
+ *  honesty marker, and the lunchtime open status when relevant. Clicking a
+ *  card promotes it to "active" so the map, share buttons and narrative
+ *  update — the cards themselves stay rendered so the walker can flip back. */
+function CandidateCards({
+  candidates,
+  activeIdx,
+  onPick,
+}: {
+  candidates: RouteResponse[];
+  activeIdx: number;
+  onPick: (idx: number) => void;
+}) {
   return (
     <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
-      <div className="flex items-baseline justify-between">
-        <h2 className="font-serif text-lg text-primary">Your walk</h2>
-        {result.cached && (
-          <span className="text-xs uppercase tracking-wide text-on-surface-variant">cached</span>
-        )}
-      </div>
-      <dl className="mt-3 grid grid-cols-2 gap-y-2 text-sm">
-        <dt className="text-on-surface-variant">Distance</dt>
-        <dd className="font-medium">{result.actualKm.toFixed(1)} km</dd>
-        <dt className="text-on-surface-variant">Ascent</dt>
-        <dd className="font-medium">{result.ascentM} m</dd>
-        <dt className="text-on-surface-variant">Walking time</dt>
-        <dd className="font-medium">
-          {hours}h {mins}m
-        </dd>
-        <dt className="text-on-surface-variant">Midpoint</dt>
-        <dd className="font-medium">{result.midpointPoi.name}</dd>
-      </dl>
+      <h2 className="font-serif text-lg text-primary">
+        Choose a walk
+        <span className="ml-2 text-xs font-normal text-on-surface-variant">
+          {candidates.length} option{candidates.length === 1 ? "" : "s"} for these inputs
+        </span>
+      </h2>
+      <ul className="mt-3 space-y-2">
+        {candidates.map((c, i) => {
+          const active = i === activeIdx;
+          const hrs = Math.floor(c.durationMin / 60);
+          const mins = (c.durationMin % 60).toString().padStart(2, "0");
+          const poi = c.midpointPoi;
+          const viaLabel = poi.id === -1 ? "Midpoint" : poi.viaPoi ? "Via" : "Near";
+          // Shape bullet from the narrative — gives each option a
+          // one-glance fingerprint so the cards aren't all "12 km · 3h".
+          // Falls back silently when narration failed or the cached row
+          // pre-dates the bullet format.
+          const shape = extractFirstBullet(c.narrative);
+          return (
+            <li key={c.cacheKey}>
+              <button
+                type="button"
+                onClick={() => onPick(i)}
+                aria-pressed={active}
+                className={`w-full rounded-lg p-3 text-left transition-colors ${
+                  active
+                    ? "bg-primary/10 ring-1 ring-primary"
+                    : "bg-surface-container-high hover:bg-surface-container-highest"
+                }`}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-semibold text-on-surface">
+                    Walk {i + 1}
+                  </span>
+                  <span className="text-xs text-on-surface-variant">
+                    {c.actualKm.toFixed(1)} km · {hrs}h {mins}m · {c.ascentM} m up
+                  </span>
+                </div>
+                {shape && (
+                  <p className="mt-1 line-clamp-2 text-xs leading-snug text-on-surface/85">
+                    {shape}
+                  </p>
+                )}
+                <div className="mt-1.5 flex items-center gap-2 text-xs text-on-surface-variant">
+                  <span className="truncate">
+                    <span className="font-medium text-on-surface">{viaLabel}</span>{" "}
+                    {poi.name}
+                  </span>
+                  {poi.isLunchStop && (
+                    <OpeningBadge status={poi.openingStatus} spec={poi.openingHours} />
+                  )}
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -763,11 +931,7 @@ function NarrativePanel({ narrative }: { narrative: string }) {
   return (
     <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
       <h2 className="font-serif text-lg text-primary">About this walk</h2>
-      <div className="mt-3 space-y-3 text-sm leading-relaxed text-on-surface">
-        {narrative.split(/\n\n+/).map((para, i) => (
-          <p key={i}>{para}</p>
-        ))}
-      </div>
+      <RouteNarrative narrative={narrative} className="mt-3" />
     </section>
   );
 }

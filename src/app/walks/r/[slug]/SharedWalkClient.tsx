@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import LoopMap from "@/components/LoopMap";
+import RouteNarrative from "@/components/RouteNarrative";
 import type { LoopResult } from "@/lib/route-engine";
 
 interface Props {
@@ -36,6 +37,12 @@ export default function SharedWalkClient({ route, slug }: Props) {
   const hours = Math.floor(route.durationMin / 60);
   const minutes = (route.durationMin % 60).toString().padStart(2, "0");
   const start = route.geometry.coordinates[0] as [number, number];
+  const proximity =
+    route.midpointPoi.id === -1
+      ? "around"
+      : route.midpointPoi.viaPoi
+        ? "via"
+        : "near";
 
   return (
     <main className="min-h-screen bg-surface">
@@ -50,7 +57,8 @@ export default function SharedWalkClient({ route, slug }: Props) {
           {route.actualKm.toFixed(1)} km loop in the Cotswolds
         </h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          {route.ascentM} m ascent · {hours}h {minutes}m walking time · via {route.midpointPoi.name}
+          {route.ascentM} m ascent · {hours}h {minutes}m walking time · {proximity}{" "}
+          {route.midpointPoi.name}
         </p>
       </header>
 
@@ -82,7 +90,13 @@ export default function SharedWalkClient({ route, slug }: Props) {
               <dd className="font-medium">
                 {hours}h {minutes}m
               </dd>
-              <dt className="text-on-surface-variant">Midpoint</dt>
+              <dt className="text-on-surface-variant">
+                {route.midpointPoi.id === -1
+                  ? "Midpoint"
+                  : route.midpointPoi.viaPoi
+                    ? "Via"
+                    : "Near"}
+              </dt>
               <dd className="font-medium">{route.midpointPoi.name}</dd>
             </dl>
           </section>
@@ -110,11 +124,7 @@ export default function SharedWalkClient({ route, slug }: Props) {
           {route.narrative && (
             <section className="rounded-lg bg-surface-container-low p-5 shadow-sm">
               <h2 className="font-serif text-lg text-primary">About this walk</h2>
-              <div className="mt-3 space-y-3 text-sm leading-relaxed text-on-surface">
-                {route.narrative.split(/\n\n+/).map((para, i) => (
-                  <p key={i}>{para}</p>
-                ))}
-              </div>
+              <RouteNarrative narrative={route.narrative} className="mt-3" />
             </section>
           )}
         </aside>

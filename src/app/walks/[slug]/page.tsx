@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import LoopMap from "@/components/LoopMap";
+import RouteNarrative from "@/components/RouteNarrative";
 import StayNearby from "@/components/StayNearby";
 import { findBySlug } from "@/lib/route-engine";
 import { encodePolyline } from "@/lib/encode-polyline";
@@ -36,10 +37,11 @@ export default async function SeoWalkPage({ params }: PageProps) {
   const shareSlug = cacheKeyToSlug(route.cacheKey);
 
   // Schema.org HikingTrail structured data
+  const viaPoi = route.midpointPoi.viaPoi;
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "ExerciseAction",
-    name: pageTitle(route.actualKm, route.midpointPoi.name, route.theme),
+    name: pageTitle(route.actualKm, route.midpointPoi.name, route.theme, viaPoi),
     description: route.narrative
       ? truncate(route.narrative.split(/\n\n+/)[0]!, 300)
       : undefined,
@@ -75,7 +77,7 @@ export default async function SeoWalkPage({ params }: PageProps) {
             <span className="text-on-surface capitalize">{route.theme} walk</span>
           </nav>
           <h1 className="mt-2 font-serif text-3xl text-primary leading-tight">
-            {pageTitle(route.actualKm, route.midpointPoi.name, route.theme)}
+            {pageTitle(route.actualKm, route.midpointPoi.name, route.theme, viaPoi)}
           </h1>
           <p className="mt-1 text-sm text-on-surface-variant">
             Cotswolds AONB · circular walking route
@@ -122,11 +124,7 @@ export default async function SeoWalkPage({ params }: PageProps) {
           {route.narrative && (
             <section>
               <h2 className="font-serif text-xl text-primary mb-4">About this walk</h2>
-              <div className="prose prose-sm max-w-none text-on-surface/80 space-y-4">
-                {route.narrative.split(/\n\n+/).map((para, i) => (
-                  <p key={i}>{para.trim()}</p>
-                ))}
-              </div>
+              <RouteNarrative narrative={route.narrative} />
             </section>
           )}
 
@@ -142,8 +140,16 @@ export default async function SeoWalkPage({ params }: PageProps) {
                     Lunch stop: {route.midpointPoi.name}
                   </h3>
                   <p className="text-sm text-on-surface-variant mt-0.5">
-                    Recommended midpoint stop — {capitalize(route.midpointPoi.type ?? "pub")}
+                    {viaPoi
+                      ? `The route passes its door — ${capitalize(route.midpointPoi.type ?? "pub")}.`
+                      : `A short detour from the route — ${capitalize(route.midpointPoi.type ?? "pub")}.`}
                   </p>
+                  {route.midpointPoi.openingHours && (
+                    <p className="text-xs text-on-surface-variant/80 mt-1">
+                      Opening hours: <span className="font-mono">{route.midpointPoi.openingHours}</span>{" "}
+                      — call ahead to confirm for your walking date.
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
@@ -190,10 +196,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     return { title: "Walk not found — Cotswolds Way" };
   }
 
-  const title = pageTitle(route.actualKm, route.midpointPoi.name, route.theme);
+  const viaPoi = route.midpointPoi.viaPoi;
+  const title = pageTitle(route.actualKm, route.midpointPoi.name, route.theme, viaPoi);
+  const proximityPhrase = viaPoi
+    ? `passing ${route.midpointPoi.name}`
+    : `near ${route.midpointPoi.name}`;
   const description = route.narrative
     ? truncate(route.narrative.split(/\n\n+/)[0]!, 160)
-    : `A ${route.actualKm.toFixed(1)} km circular walk in the Cotswolds AONB, passing ${route.midpointPoi.name}. ${route.ascentM} m of ascent.`;
+    : `A ${route.actualKm.toFixed(1)} km circular walk in the Cotswolds AONB, ${proximityPhrase}. ${route.ascentM} m of ascent.`;
 
   const ogImage = buildMapboxStaticUrl(route.geometry.coordinates as [number, number][]);
 
@@ -217,8 +227,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function pageTitle(km: number, poiName: string, theme: string): string {
-  return `${km.toFixed(1)} km ${theme} walk via ${poiName} · Cotswolds AONB`;
+function pageTitle(km: number, poiName: string, theme: string, viaPoi: boolean): string {
+  const proximity = viaPoi ? "via" : "near";
+  return `${km.toFixed(1)} km ${theme} walk ${proximity} ${poiName} · Cotswolds AONB`;
 }
 
 function capitalize(s: string): string {

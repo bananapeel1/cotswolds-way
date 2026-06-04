@@ -134,6 +134,7 @@ RETURNS TABLE(
   scenic_score SMALLINT,
   terrain_class TEXT,
   is_lunch_stop BOOLEAN,
+  opening_hours TEXT,
   distance_m DOUBLE PRECISION
 )
 LANGUAGE SQL
@@ -144,7 +145,7 @@ AS $$
   )
   SELECT
     p.id, p.name, p.type, p.longitude, p.latitude,
-    p.scenic_score, p.terrain_class, p.is_lunch_stop,
+    p.scenic_score, p.terrain_class, p.is_lunch_stop, p.opening_hours,
     ST_Distance(p.geog, (SELECT g FROM start_geog)) AS distance_m
   FROM pois p, start_geog
   WHERE

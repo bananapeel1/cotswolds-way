@@ -26,7 +26,13 @@ export async function GET(
   }
 
   const km = route.actualKm.toFixed(1);
-  const name = `Cotswolds ${km} km loop via ${route.midpointPoi.name}`;
+  const proximity =
+    route.midpointPoi.id === -1
+      ? "loop"
+      : route.midpointPoi.viaPoi
+        ? `loop via ${route.midpointPoi.name}`
+        : `loop near ${route.midpointPoi.name}`;
+  const name = `Cotswolds ${km} km ${proximity}`;
   // First paragraph of the narrative (when present) makes a sensible GPX
   // description — short enough to display in a GPS device's metadata view.
   const description = route.narrative

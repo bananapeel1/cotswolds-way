@@ -51,10 +51,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const hours = Math.floor(route.durationMin / 60);
   const minutes = (route.durationMin % 60).toString().padStart(2, "0");
 
+  const proximity =
+    route.midpointPoi.id === -1
+      ? "loops around the midpoint"
+      : route.midpointPoi.viaPoi
+        ? `passes ${route.midpointPoi.name}`
+        : `runs close to ${route.midpointPoi.name}`;
   const title = `${km} km Cotswolds loop · ${ascentM} m ascent`;
   const description = route.narrative
     ? truncate(route.narrative.split(/\n\n+/)[0]!, 160)
-    : `A ${km} km circular walk in the Cotswolds AONB. ${hours}h ${minutes} walking time, ${ascentM} m of ascent. Passes ${route.midpointPoi.name}.`;
+    : `A ${km} km circular walk in the Cotswolds AONB. ${hours}h ${minutes} walking time, ${ascentM} m of ascent. ${proximity[0]?.toUpperCase()}${proximity.slice(1)}.`;
 
   const ogImage = buildMapboxStaticUrl(route.geometry.coordinates as [number, number][]);
 

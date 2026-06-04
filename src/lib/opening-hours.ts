@@ -103,3 +103,79 @@ export function isOpenOn(openingHours: string | undefined | null, date: Date): O
   if (seenDayRules.size > 0) return "closed";
   return "unknown";
 }
+
+// ─── Time-of-day awareness ───────────────────────────────────────────────────
+//
+// isOpenOn above answers "is the venue open at any point on this day", which
+// is right for itinerary day-planning. The route engine's lunch-stop check
+// needs more — "is the kitchen open at 13:00 on this day" — because a pub
+// open only 17:00-23:00 isn't a viable lunch stop. isOpenAt below extends the
+// same parser to look at hour-and-minute ranges as well.
+
+/** Extract time ranges (in minutes-since-midnight) from a single rule body. */
+function timeRangesFromRule(rule: string): { from: number; to: number }[] {
+  const ranges: { from: number; to: number }[] = [];
+  // Match HH:MM-HH:MM, possibly comma-separated within one rule.
+  const re = /(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(rule)) !== null) {
+    const from = Number(m[1]) * 60 + Number(m[2]);
+    const to = Number(m[3]) * 60 + Number(m[4]);
+    // Cross-midnight (e.g. 22:00-02:00) — split into two open intervals so
+    // 13:00 is unambiguously checkable without normalising the calling Date.
+    if (to <= from) {
+      ranges.push({ from, to: 24 * 60 });
+      ranges.push({ from: 0, to });
+    } else {
+      ranges.push({ from, to });
+    }
+  }
+  return ranges;
+}
+
+/**
+ * Check whether a venue is open at the precise moment `when`. Considers both
+ * the day-of-week rules (via openDaysFromRule) and the time-of-day ranges
+ * inside the matching rule.
+ *
+ * Returns "open" / "closed" / "unknown" with the same semantics as isOpenOn:
+ * "unknown" never blocks a candidate (the caller treats it as "not verified").
+ */
+export function isOpenAt(
+  openingHours: string | undefined | null,
+  when: Date,
+): OpeningStatus {
+  if (!openingHours) return "unknown";
+  const str = openingHours.trim();
+  if (!str) return "unknown";
+  if (/^24\/7/i.test(str)) return "open";
+
+  const dayKey = DAY_NAMES[dayOfWeek(when)];
+  const minutes = when.getHours() * 60 + when.getMinutes();
+
+  // Informal "closed Mondays" / "closed Sun" — overrides everything for that day.
+  const informalClosed = /closed (Mo|Tu|We|Th|Fr|Sa|Su|Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:days?)?/i.exec(str);
+  if (informalClosed) {
+    const abbr = informalClosed[1].slice(0, 2);
+    if (abbr === dayKey) return "closed";
+  }
+
+  const rules = str.split(";").map((r) => r.trim()).filter(Boolean);
+  if (rules.length === 0) return "unknown";
+
+  let sawAnyDayRule = false;
+  for (const rule of rules) {
+    const openDays = openDaysFromRule(rule);
+    if (!openDays) continue;
+    sawAnyDayRule = true;
+    if (!openDays.has(dayKey)) continue;
+    const ranges = timeRangesFromRule(rule);
+    // No time ranges in a matching day rule → assume "open all day" (a common
+    // OSM shorthand: "Mo-Su" with no hours = always-on).
+    if (ranges.length === 0) return "open";
+    if (ranges.some((r) => minutes >= r.from && minutes < r.to)) return "open";
+  }
+  // We parsed day rules but none placed this moment inside an open window.
+  if (sawAnyDayRule) return "closed";
+  return "unknown";
+}

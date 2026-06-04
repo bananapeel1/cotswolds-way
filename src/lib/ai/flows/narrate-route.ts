@@ -34,26 +34,31 @@ const BANNED_PATTERNS = [
   "a journey through",
 ];
 
-const NARRATE_SYSTEM = `You are writing a short blurb for a circular walking route in the Cotswolds. The walker is choosing whether to spend their day on this loop; you have three paragraphs to help them decide.
+const NARRATE_SYSTEM = `You are writing a short blurb for a circular walking route in the Cotswolds. The walker is comparing three options and choosing one; help them decide fast.
 
 Voice:
 - Direct, warm, specific. Like a knowledgeable friend, not a tourist board.
 - British English. Distances in km and miles together on first mention, km only after. Time in hours and minutes ("4h 15m").
 - Short sentences mixed with longer ones. No semicolons used as fancy commas.
-- No bullet points. No headers. No emojis.
-- Mention the midpoint POI by name in paragraph 2.
+- No emojis. No headers beyond the literal labels below.
 
-Structure (3 paragraphs, ~80-120 words each):
-1. **The shape of the walk.** What kind of terrain, the overall character, who it suits. State the distance, ascent, and rough walking time in this paragraph.
-2. **The lunch stop and the middle of the day.** Centre on the midpoint POI. Why people stop there, what's around it, what to look for on the approach.
-3. **The return and the verdict.** What the back half is like, any practical note (muddy after rain, bring a windproof for the ridge, etc.), and a one-sentence summing-up.
+Output EXACTLY this format — five labelled bullets, blank line, then one paragraph.
+
+- Shape: [10-15 words. Terrain character, off-road vs lanes, anything geographically distinctive.]
+- Best for: [10-15 words. Who this walk suits — fitness level, group type, motivation.]
+- Halfway: [15-25 words. The midpoint POI by name. If lunch is verified open, say so; if verified closed, tell them to bring food; if unverified, suggest calling ahead.]
+- Heads up: [10-20 words. One practical note — mud after rain, exposure on the ridge, a stile to lift a dog over, a busy lane to cross, etc.]
+- Verdict: [10-15 words. One-line summing up, no qualifiers.]
+
+A single paragraph after the bullets, 60-90 words. The "feel" of the walk — the moment that makes it memorable, the back half, what the walker will remember. Voice and atmosphere, not facts.
 
 Banned words — NEVER use any of these or close synonyms: ${BANNED_WORDS.join(", ")}.
 Banned phrasings — NEVER use any of these patterns: ${BANNED_PATTERNS.join(", ")}.
 
-Do not use em-dashes (—). Use commas, full stops, or semicolons.
+Do not use em-dashes (—). Use commas, full stops, colons, or semicolons.
 Do not invent facts about the POI beyond what you are told.
-Do not promise the weather, the season, or who will be there.`;
+Do not promise the weather, the season, or who will be there.
+Do not skip any bullet. Do not add a 6th bullet. Do not add a heading above the bullets or after them.`;
 
 export interface NarrateRouteInput {
   loop: LoopResult;
@@ -76,9 +81,9 @@ export interface NarrateRouteInput {
 
 // Per-difficulty voice nudge. Empty string for moderate (default voice).
 const DIFFICULTY_GUIDE: Record<Difficulty, string> = {
-  easy: "The walker has chosen 'easy'. Pitch this as a relaxed afternoon: gentle terrain, low effort, no need to rush. Don't use language that suggests a hard workout. The verdict line should reflect this — a walk to recharge on, not a challenge.",
+  easy: "The walker has chosen 'easy'. Pitch this as a relaxed afternoon: gentle terrain, low effort, no need to rush. The Verdict bullet should reflect this — a walk to recharge on, not a challenge.",
   moderate: "",
-  strenuous: "The walker has chosen 'strenuous'. Pitch this as a proper day out for fit walkers: emphasise the climb, the satisfaction of effort, and the views earned. Don't undersell the demand. The verdict line should reflect this — a walk that asks something of you.",
+  strenuous: "The walker has chosen 'strenuous'. Pitch this as a proper day out for fit walkers: emphasise the climb, the satisfaction of effort, and the views earned. The Verdict bullet should reflect this — a walk that asks something of you.",
 };
 
 // Per-pace pace nudge. Empty for steady.
@@ -93,9 +98,9 @@ const PACE_GUIDE: Record<Pace, string> = {
 function lunchGuide(pref: LunchStop, midpointName: string): string {
   switch (pref) {
     case "required":
-      return `The walker explicitly wants a lunch stop. ${midpointName} is the anchor of the day — in paragraph 2, describe it concretely (the room, the food, why people stop there). Don't treat it as just another waypoint.`;
+      return `The walker explicitly wants a lunch stop. ${midpointName} is the anchor of the day — in the Halfway bullet, lead with it concretely (what kind of place, what to expect). Do not hedge.`;
     case "none":
-      return `The walker is NOT stopping for lunch on this route. Treat ${midpointName} as a moment to pause and look around in paragraph 2, not as a place to refuel. Do not describe ordering food or sitting down for a meal.`;
+      return `The walker is NOT stopping for lunch on this route. Treat ${midpointName} as a moment to pause and look around in the Halfway bullet, not as a place to refuel. Do not mention ordering food.`;
     case "preferred":
     default:
       return "";
@@ -140,12 +145,33 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
   };
 
   const midpoint = loop.midpointPoi;
+  // Tell Gemini the truth about whether the loop's polyline actually reaches
+  // the POI's door (viaPoi=true) or just passes within walking distance of
+  // it (viaPoi=false). The system prompt forbids inventing facts, so this is
+  // the cue that keeps "via" honest in the prose.
+  const onRouteFact = midpoint.id === -1
+    ? "" // synthetic midpoint — neither claim applies
+    : midpoint.viaPoi
+      ? "The walking route is built to pass its door — the loop genuinely goes via this POI."
+      : "The route passes within walking distance of this POI (a few hundred metres) but does not go through it. Say 'near' or 'a short detour from', never 'via' or 'past'.";
+  // Day+time-aware open-status verdict from the walker's chosen walkDate.
+  // Surfaced here so paragraph 2 can either confidently describe the stop
+  // ("open") or hedge ("call ahead" / "closed that day").
+  const openingFact = midpoint.isLunchStop
+    ? midpoint.openingStatus === "open"
+      ? "Opening hours: verified open at lunchtime on the walker's chosen date."
+      : midpoint.openingStatus === "closed"
+        ? "Opening hours: VERIFIED CLOSED at lunchtime on the walker's chosen date. Tell the walker to bring food or pick a different date — do not describe ordering lunch."
+        : "Opening hours: unverified for the walker's date. Suggest they call ahead before counting on it."
+    : "";
   const midpointFacts: string[] = [
     `Name: ${midpoint.name}`,
     `Type: ${midpoint.type}`,
     midpoint.isLunchStop ? "Suitable as a lunch stop." : "Not a designated lunch stop.",
     midpoint.terrainClass ? `Sits in ${midpoint.terrainClass} terrain.` : "",
     `Scenic score: ${midpoint.scenicScore}/10.`,
+    onRouteFact,
+    openingFact,
   ].filter(Boolean);
 
   // Assemble only the customisation guidance that's non-default. Keeps the
@@ -158,7 +184,7 @@ export function buildNarrateRoutePrompt(input: NarrateRouteInput): {
   const stops = waypointLabels.filter(Boolean);
   const waypointGuide =
     stops.length > 0
-      ? `The walker chose specific places this route must pass through, in order: ${stops.join(", ")}. The loop is built to go through them — walk the reader past each one in paragraph 2, in route order. These are the heart of the walk; don't treat them as incidental.`
+      ? `The walker chose specific places this route must pass through, in order: ${stops.join(", ")}. The loop is built to go through them — in the Halfway bullet, name them in route order. These are the heart of the walk; don't treat them as incidental.`
       : "";
 
   const customisation = [
@@ -181,14 +207,14 @@ Total ascent: ${loop.ascentM} m.
 Walking time at a ${paceLabel[pace]}: ${time}.
 Difficulty: ${difficulty}.
 
-Midpoint POI (mention by name in paragraph 2):
+Midpoint POI (must be named in the Halfway bullet):
 ${midpointFacts.map((f) => `- ${f}`).join("\n")}
 ${
   customisation
     ? `\nWalker preferences (adjust your voice accordingly):\n${customisation}\n`
     : ""
 }
-Now write the 3-paragraph blurb. Follow the structure exactly. Do not break the voice rules.`;
+Now write the five labelled bullets followed by ONE atmosphere paragraph. Follow the format exactly. Do not break the voice rules. Do not skip any bullet.`;
 
   return { system: NARRATE_SYSTEM, prompt };
 }

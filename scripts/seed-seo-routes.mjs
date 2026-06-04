@@ -145,7 +145,13 @@ async function generateRoute({ village, theme, km, seoSlug }, attempt = 0) {
     throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
   }
 
-  return res.json();
+  // The API now returns up to 3 candidates per request. SEO landing pages are
+  // anchored to a single route per slug, so we keep the top-scoring one (the
+  // engine sorts highest-first inside findOrGenerateCandidates).
+  const body = await res.json();
+  const top = body?.candidates?.[0];
+  if (!top) throw new Error("No candidates in response");
+  return top;
 }
 
 // ─── Stamp the SEO slug in Supabase ─────────────────────────────────────────

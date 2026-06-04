@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import {
-  findOrGenerate,
+  findOrGenerateCandidates,
   setNarrative,
   ServiceDegradedError,
   ENGINE_VERSION,
@@ -42,6 +42,14 @@ const RequestSchema = z.object({
       }),
     )
     .max(5)
+    .optional(),
+  // ISO date (YYYY-MM-DD) of the walker's intended walk. When present, each
+  // candidate POI's opening_hours is evaluated at 13:00 local for that date
+  // and the verdict surfaced in the response (and used to filter "required"
+  // lunch stops). Absent → openingStatus=unknown for everything.
+  walkDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "walkDate must be YYYY-MM-DD")
     .optional(),
 });
 
@@ -107,26 +115,26 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── Generate or fetch from cache ─────────────────────────────────────────
-  // ServiceDegradedError is thrown directly from callGraphhopperRoundTrip
-  // when GH returns 4xx/5xx or a network error, so no pre-flight ping is
-  // needed here. The previous beforeGenerate ping was both fragile (its
-  // AbortSignal raced against the OIDC token fetch) and redundant.
-  let loop: LoopResult | null;
+  // findOrGenerateCandidates returns up to 3 loop alternatives so the UI can
+  // present a comparison. ServiceDegradedError still bubbles up from the
+  // engine layer for a structured 503; null/empty array means GH ran fine but
+  // produced nothing usable for these constraints (e.g. required lunch with
+  // no open pubs near the chosen midpoint).
+  let candidates: LoopResult[];
   try {
-    loop = await findOrGenerate(
-      {
-        startLat: body.lat,
-        startLng: body.lng,
-        targetKm: body.km,
-        theme: body.theme as Theme,
-        difficulty: body.difficulty,
-        pace: body.pace,
-        lunchStop: body.lunchStop,
-        exact: body.exact,
-        emphasis: body.emphasis,
-        waypoints: body.waypoints,
-      },
-    );
+    candidates = await findOrGenerateCandidates({
+      startLat: body.lat,
+      startLng: body.lng,
+      targetKm: body.km,
+      theme: body.theme as Theme,
+      difficulty: body.difficulty,
+      pace: body.pace,
+      lunchStop: body.lunchStop,
+      exact: body.exact,
+      emphasis: body.emphasis,
+      waypoints: body.waypoints,
+      walkDate: body.walkDate,
+    });
   } catch (err) {
     if (err instanceof ServiceDegradedError) {
       logMetric({
@@ -147,7 +155,7 @@ export async function POST(req: NextRequest) {
       );
     }
     const detail = err instanceof Error ? err.message : String(err);
-    console.error("[routes-engine] findOrGenerate threw:", err);
+    console.error("[routes-engine] findOrGenerateCandidates threw:", err);
     logMetric({
       outcome: "error",
       theme: body.theme,
@@ -165,83 +173,95 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!loop) {
+  if (candidates.length === 0) {
     logMetric({
       outcome: "not_found",
       theme: body.theme,
       km: body.km,
+      lunch_stop: body.lunchStop,
+      walk_date: body.walkDate,
       total_ms: Date.now() - t0,
       engine_version: ENGINE_VERSION,
     });
+    // Bespoke 404 message for the "required pub but none found" case, which
+    // is now the dominant cause of empty results (the old engine silently
+    // substituted a synthetic midpoint here — see audit).
+    const lunchRequired = body.lunchStop === "required";
     return Response.json(
       {
         error: "no_loop_found",
-        message:
-          "No loop matching those constraints in this area. Try a different theme, a different distance, or a nearby start point.",
+        message: lunchRequired
+          ? "No loop within range has a pub or cafe near its midpoint. Try a longer walk, drop the must-have-pub requirement, or start somewhere with more options nearby."
+          : "No loop matching those constraints in this area. Try a different theme, a different distance, or a nearby start point.",
       },
       { status: 404 },
     );
   }
 
-  // ─── Narrate on cache miss ────────────────────────────────────────────────
-  // Failures here are non-fatal: we still return the route so the user gets
-  // a usable result. The narrative just renders as null in the UI and the
+  // ─── Narrate each candidate that needs it, in parallel ────────────────────
+  // Failures here are non-fatal: we still return the route(s) so the user gets
+  // usable results. Any unnarrated candidate renders as null in the UI and the
   // background re-queue (Milestone D) can backfill later.
-  let narrative = loop.narrative;
-  let narrateMs: number | undefined;
-  if (!narrative) {
-    const tNarrate = Date.now();
-    try {
-      narrative = await narrateRoute({
-        loop,
-        theme: body.theme as Theme,
-        startLabel: body.startLabel,
-        difficulty: body.difficulty,
-        pace: body.pace,
-        lunchStop: body.lunchStop,
-        emphasis: body.emphasis,
-        waypointLabels: body.waypoints
-          ?.map((w) => w.label?.trim())
-          .filter((l): l is string => !!l),
-      });
-      // Awaited so the DB write completes before Next.js tears down the
-      // serverless context. Pre-fix, the fire-and-forget version was racing
-      // with saveRoute and losing.
-      await setNarrative(loop.cacheKey, narrative).catch((err) => {
-        console.warn("[routes-engine] failed to persist narrative:", err);
-      });
-    } catch (err) {
-      console.warn("[routes-engine] narration failed:", err);
-      narrative = null;
-    }
-    narrateMs = Date.now() - tNarrate;
-  }
+  const tNarrate = Date.now();
+  const waypointLabels = body.waypoints
+    ?.map((w) => w.label?.trim())
+    .filter((l): l is string => !!l);
+  const narrated = await Promise.all(
+    candidates.map(async (loop) => {
+      if (loop.narrative) return loop;
+      try {
+        const narrative = await narrateRoute({
+          loop,
+          theme: body.theme as Theme,
+          startLabel: body.startLabel,
+          difficulty: body.difficulty,
+          pace: body.pace,
+          lunchStop: body.lunchStop,
+          emphasis: body.emphasis,
+          waypointLabels,
+        });
+        // Awaited so the DB write completes before Next.js tears down the
+        // serverless context.
+        await setNarrative(loop.cacheKey, narrative).catch((err) => {
+          console.warn("[routes-engine] failed to persist narrative:", err);
+        });
+        return { ...loop, narrative };
+      } catch (err) {
+        console.warn("[routes-engine] narration failed for", loop.cacheKey, err);
+        return loop;
+      }
+    }),
+  );
+  const narrateMs = Date.now() - tNarrate;
 
   logMetric({
-    outcome: loop.cached ? "cached" : "generated",
+    outcome: candidates.every((c) => c.cached) ? "cached" : "generated",
     theme: body.theme,
     km: body.km,
     difficulty: body.difficulty,
     pace: body.pace,
     lunch_stop: body.lunchStop,
-    actual_km: loop.actualKm.toFixed(1),
-    score: loop.score.toFixed(2),
-    cache_key: loop.cacheKey,
+    walk_date: body.walkDate,
+    candidates: candidates.length,
+    via_poi_count: candidates.filter((c) => c.midpointPoi.viaPoi).length,
+    top_score: candidates[0].score.toFixed(2),
+    top_cache_key: candidates[0].cacheKey,
     total_ms: Date.now() - t0,
     narrate_ms: narrateMs,
-    narrative_chars: narrative?.length ?? 0,
     engine_version: ENGINE_VERSION,
   });
 
   return Response.json({
-    cacheKey: loop.cacheKey,
-    cached: loop.cached,
-    geometry: loop.geometry,
-    actualKm: loop.actualKm,
-    ascentM: loop.ascentM,
-    durationMin: loop.durationMin,
-    midpointPoi: loop.midpointPoi,
-    score: loop.score,
-    narrative,
+    candidates: narrated.map((loop) => ({
+      cacheKey: loop.cacheKey,
+      cached: loop.cached,
+      geometry: loop.geometry,
+      actualKm: loop.actualKm,
+      ascentM: loop.ascentM,
+      durationMin: loop.durationMin,
+      midpointPoi: loop.midpointPoi,
+      score: loop.score,
+      narrative: loop.narrative,
+    })),
   });
 }

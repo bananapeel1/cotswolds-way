@@ -8,6 +8,8 @@ const STOW = { lng: -1.7244, lat: 51.9314, label: "Stow-on-the-Wold" };
 
 type Theme = "ridge" | "valley" | "woodland";
 
+type OpeningStatus = "open" | "closed" | "unknown";
+
 interface MidpointPoi {
   id: number;
   name: string;
@@ -17,6 +19,9 @@ interface MidpointPoi {
   scenicScore: number;
   terrainClass: string | null;
   isLunchStop: boolean;
+  viaPoi: boolean;
+  openingHours: string | null;
+  openingStatus: OpeningStatus;
 }
 
 interface RouteResponse {
@@ -31,6 +36,10 @@ interface RouteResponse {
   midpointPoi: MidpointPoi;
   score: number;
   narrative: string | null;
+}
+
+interface GenerateResponse {
+  candidates: RouteResponse[];
 }
 
 export default function WalksPreviewPage() {
@@ -61,8 +70,10 @@ export default function WalksPreviewPage() {
         setError(body.message ?? body.error ?? `Request failed (${res.status})`);
         return;
       }
-      const data = (await res.json()) as RouteResponse;
-      setResult(data);
+      // The API now returns up to 3 candidates; the dev preview only renders
+      // the top-scoring one so it stays a simple smoke test of the engine.
+      const data = (await res.json()) as GenerateResponse;
+      setResult(data.candidates?.[0] ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

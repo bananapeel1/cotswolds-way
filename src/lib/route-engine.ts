@@ -22,6 +22,7 @@
  */
 
 import { getAdminClient } from "@/lib/supabase-admin";
+import { isOpenAt, type OpeningStatus } from "@/lib/opening-hours";
 
 const GH_BASE = (process.env.GRAPHHOPPER_URL ?? "http://localhost:8989").replace(/\/$/, "");
 
@@ -159,6 +160,12 @@ export interface LoopRequest {
    *  steers the narrative. Empty/absent → identical behaviour to before. Does
    *  NOT affect geometry, so it is NOT part of the cache key. */
   emphasis?: string;
+  /** ISO date (YYYY-MM-DD) the walker plans to walk. When set, candidate POI
+   *  opening_hours are evaluated at 13:00 on this date; in lunchStop=required
+   *  mode candidates whose status is definitely "closed" are filtered out
+   *  before ranking. NOT part of the cache key (doesn't affect geometry —
+   *  openingStatus is computed at serve time from the cached POI row). */
+  walkDate?: string;
 }
 
 /** Resolve LoopRequest's optional customization fields to their defaults. */
@@ -171,6 +178,7 @@ export function resolveLoopRequest(req: LoopRequest): Required<LoopRequest> {
     exact: req.exact ?? false,
     emphasis: req.emphasis ?? "",
     waypoints: req.waypoints ?? [],
+    walkDate: req.walkDate ?? "",
   };
 }
 
@@ -183,6 +191,18 @@ export interface MidpointPoi {
   scenicScore: number;
   terrainClass: string | null;
   isLunchStop: boolean;
+  /** True when the route polyline actually passes within ~50 m of this POI —
+   *  i.e. the walker following the GPX file reaches its door. False when the
+   *  POI is "near" the loop's midpoint but the line goes around it. Derived
+   *  fresh at read time from a polyline-vertex sweep, never persisted. */
+  viaPoi: boolean;
+  /** Raw OSM opening_hours string from the joined POI row. Null when the POI
+   *  has no opening_hours tag (the common case for rural pubs). */
+  openingHours: string | null;
+  /** Day-and-time-aware open status at 13:00 on the walker's chosen walkDate.
+   *  "unknown" when openingHours is null, unparseable, or no walkDate was
+   *  supplied. Computed per request — never persisted to the routes table. */
+  openingStatus: OpeningStatus;
 }
 
 export interface LoopResult {
@@ -204,12 +224,12 @@ export const ENGINE_VERSION = "v2"; // v2 = GraphHopper backend
 
 // ─── Cache key ──────────────────────────────────────────────────────────────
 
-export function buildCacheKey(req: LoopRequest): string {
+export function buildCacheKey(req: LoopRequest, seed: number = 0): string {
   // Only params that affect the GEOMETRY belong in the cache key. Difficulty
   // and pace tune score + duration but use the same underlying polyline, so
   // they're re-derived at serve time from the cached ascentM / actualKm.
   // LunchStop = required forces a different POI → different geometry, so it
-  // does belong in the key.
+  // does belong in the key. walkDate does NOT — openingStatus is per-request.
   //
   // Two tiers (see LoopRequest.exact):
   //   - bespoke (exact): full-precision start (5dp ≈ 1.1 m) + exact distance
@@ -219,6 +239,12 @@ export function buildCacheKey(req: LoopRequest): string {
   //   - sample (coarse): ~2 km grid bucket + 5 km distance bins, collapsing
   //     near-by starts to one route. Powers the pre-seeded SEO pages. UNCHANGED
   //     from the original format so the 180 existing keys still resolve.
+  //
+  // `seed` is appended ONLY when ≠ 0 and only on the exact path. This is what
+  // lets the multi-candidate flow store 3 alternative loops for the same
+  // request as 3 distinct rows (one per seed), each with its own share-link
+  // slug. seed=0 omits the suffix so seed-unaware code (SEO, legacy callers)
+  // keeps producing the original key format.
   const lunch = req.lunchStop ?? "preferred";
   // Must-pass stops define the geometry entirely (start + ordered stops). km,
   // theme and lunch don't change the polyline in this mode, so they're left out
@@ -236,7 +262,8 @@ export function buildCacheKey(req: LoopRequest): string {
     const lat = req.startLat.toFixed(5);
     const lng = req.startLng.toFixed(5);
     const km = req.targetKm.toFixed(1);
-    return `exact=${lat},${lng}|km=${km}|theme=${req.theme}|lunch=${lunch}|v=${ENGINE_VERSION}`;
+    const seedSuffix = seed === 0 ? "" : `|seed=${seed}`;
+    return `exact=${lat},${lng}|km=${km}|theme=${req.theme}|lunch=${lunch}${seedSuffix}|v=${ENGINE_VERSION}`;
   }
   const latBucket = (Math.round(req.startLat * 50) / 50).toFixed(2);
   const lngBucket = (Math.round(req.startLng * 50) / 50).toFixed(2);
@@ -246,7 +273,10 @@ export function buildCacheKey(req: LoopRequest): string {
 
 // ─── Find cached ────────────────────────────────────────────────────────────
 
-export async function findCached(cacheKey: string): Promise<LoopResult | null> {
+export async function findCached(
+  cacheKey: string,
+  walkDate?: string,
+): Promise<LoopResult | null> {
   const sb = getAdminClient();
   const { data, error } = await sb.rpc("get_route_by_cache_key", {
     p_cache_key: cacheKey,
@@ -259,6 +289,7 @@ export async function findCached(cacheKey: string): Promise<LoopResult | null> {
   const row = data[0];
   // GraphHopper round_trip always returns a LineString; cast is safe.
   const geometry = JSON.parse(row.geojson) as GeoJSON.LineString;
+  const coords = geometry.coordinates as Coord[];
 
   // When midpoint_poi_id is -1 (synthetic) or null, the SQL LEFT JOIN on pois
   // returns NULL for all poi columns. Fall back to computing the midpoint from
@@ -266,11 +297,16 @@ export async function findCached(cacheKey: string): Promise<LoopResult | null> {
   let midpointLng: number = row.midpoint_lng ?? 0;
   let midpointLat: number = row.midpoint_lat ?? 0;
   if (!midpointLng || !midpointLat) {
-    const coords = geometry.coordinates as [number, number][];
     const mid = routeMidpointCoord(coords);
     midpointLng = mid[0];
     midpointLat = mid[1];
   }
+
+  const openingHours: string | null = row.midpoint_opening_hours ?? null;
+  // viaPoi is recomputed at read time from the polyline geometry — never
+  // persisted, so old cached rows automatically benefit from the new logic
+  // without a backfill.
+  const viaPoi = isPoiOnPolyline(coords, [midpointLng, midpointLat]);
 
   return {
     cacheKey: row.cache_key,
@@ -287,6 +323,9 @@ export async function findCached(cacheKey: string): Promise<LoopResult | null> {
       scenicScore: row.midpoint_scenic_score ?? 5,
       terrainClass: row.midpoint_terrain_class,
       isLunchStop: row.midpoint_is_lunch_stop ?? false,
+      viaPoi,
+      openingHours,
+      openingStatus: evaluateOpeningStatus(openingHours, walkDate),
     },
     score: Number(row.score),
     narrative: row.narrative,
@@ -407,155 +446,257 @@ interface CandidateRow {
   scenic_score: number | null;
   terrain_class: string | null;
   is_lunch_stop: boolean;
+  opening_hours: string | null;
   distance_m: number;
 }
 
-/**
- * Generate a loop without consulting the cache.
- * Tries up to SEEDS different GH round_trip seeds; picks the best.
- * ~1-3s wallclock per call (GH is fast; elevation API is the slow bit).
- */
-export async function generateLoop(req: LoopRequest): Promise<LoopResult | null> {
-  const sb = getAdminClient();
-  const targetM = req.targetKm * 1000;
+/** Pre-elevation candidate: a GH-produced loop with the POI already chosen. */
+interface RawCandidate {
+  seed: number;
+  coords: Coord[];
+  distanceM: number;
+  midpoint: Coord;
+  poi: MidpointPoi | null;
+  /** True once the polyline has been re-routed to actually pass the POI's door
+   *  (start → POI → start via ghAlternativeLoop). False if the route-through
+   *  attempt was skipped or rejected for distance overshoot. */
+  viaPoi: boolean;
+  prescore: number;
+}
 
-  // Try a handful of seeds to get route variety; all run concurrently.
-  const SEEDS = [0, 1, 2, 42];
-  const routePromises = SEEDS.map((seed) =>
-    callGraphhopperRoundTrip(req.startLat, req.startLng, targetM, seed),
-  );
-  const rawRoutes = await Promise.all(routePromises);
-
-  // Filter: reject routes that are too far off target (±30%).
-  type Candidate = {
-    coords: Coord[];
-    distanceM: number;
-    midpoint: Coord;
-    poi: MidpointPoi | null;
+/** Build the synthetic "Route midpoint" placeholder for routes with no POI. */
+function synthesizeMidpoint(midpoint: Coord): MidpointPoi {
+  return {
+    id: -1,
+    name: "Route midpoint",
+    type: "viewpoint",
+    lng: midpoint[0],
+    lat: midpoint[1],
+    scenicScore: 5,
+    terrainClass: null,
+    isLunchStop: false,
+    viaPoi: true,
+    openingHours: null,
+    openingStatus: "unknown",
   };
-  const candidates: Candidate[] = [];
+}
 
-  for (const r of rawRoutes) {
-    if (!r) continue;
-    const ratio = Math.abs(r.distanceM - targetM) / targetM;
-    if (ratio > 0.30) continue;
+/** Convert an OSM opening_hours string + the walker's intended date into a
+ *  day-and-time-aware open/closed verdict. Returns "unknown" whenever we lack
+ *  data to decide (no opening_hours, unparseable string, or no walkDate). */
+function evaluateOpeningStatus(
+  spec: string | null,
+  walkDate: string | undefined,
+): OpeningStatus {
+  if (!spec) return "unknown";
+  if (!walkDate || !walkDate.trim()) return "unknown";
+  // Probe at 13:00 — the most forgiving lunchtime hour for pubs that open late
+  // or close early. Use local-time parsing (Date(`YYYY-MM-DDTHH:MM:SS`)).
+  const probe = new Date(`${walkDate}T13:00:00`);
+  if (Number.isNaN(probe.getTime())) return "unknown";
+  return isOpenAt(spec, probe);
+}
 
-    // Find the coord at ~50% of the route (the "lunch stop" area).
-    const midpoint = routeMidpointCoord(r.coords);
+/** Rank POI candidates by lunch preference + theme + opening status. */
+function rankPoiCandidates(
+  rows: CandidateRow[],
+  req: LoopRequest,
+): CandidateRow[] {
+  const lunchPref = req.lunchStop ?? "preferred";
+  const themeMatches = (p: CandidateRow): boolean =>
+    p.terrain_class === req.theme;
 
-    // POI search around the midpoint. Strategy depends on lunch preference:
-    //   - required:  search theme-AGNOSTICALLY (theme_filter "any" hits the
-    //                function's ELSE-true branch → every POI in the band) so a
-    //                pub that doesn't match the route's terrain still qualifies;
-    //                we keep only lunch stops and prefer theme-matching ones in
-    //                JS. A named lunch stop matters more than terrain when the
-    //                walker explicitly asked for one. This avoids an RPC
-    //                signature change (and the migration coupling it brings).
-    //   - preferred/none: theme-filtered, as before.
-    // If the primary 1.5 km band yields nothing usable, widen once to 2.5 km
-    // before giving up and synthesising a midpoint.
-    const lunchPref = req.lunchStop ?? "preferred";
+  const lunchtimeFor = (p: CandidateRow): OpeningStatus =>
+    evaluateOpeningStatus(p.opening_hours, req.walkDate);
 
-    // Always search theme-AGNOSTICALLY (theme_filter "any" hits the function's
-    // ELSE-true branch → every POI in the band). The pois table's terrain_class
-    // is currently uniformly 'mixed' (the terrain backfill never classified
-    // ridge/valley/woodland), so a hard theme filter matches almost nothing and
-    // leaves most routes with a synthetic midpoint (the 21/180 SEO symptom).
-    // Instead we fetch a generous candidate set and use terrain_class only as a
-    // soft ranking tiebreak (themeMatches), which auto-activates once the
-    // terrain data is fixed. A POI within ~1.5 km of the route's midpoint is
-    // geographically appropriate regardless of its terrain label.
-    const fetchPois = async (bandHiM: number): Promise<CandidateRow[]> => {
-      const res = await sb.rpc("candidate_midpoint_pois", {
-        start_lng: midpoint[0],
-        start_lat: midpoint[1],
-        theme_filter: "any",
-        band_lo_m: 0,
-        band_hi_m: bandHiM,
-        max_candidates: 40,
-      });
-      return (res.data ?? []) as CandidateRow[];
-    };
+  // Lunchtime ranking: open > unknown > closed. "closed" is sorted last
+  // (and in required mode, filtered out below). "unknown" sits in the middle
+  // so a verified-open pub always wins over a we-can't-tell pub.
+  const openingRank = (p: CandidateRow): number => {
+    const s = lunchtimeFor(p);
+    return s === "open" ? 2 : s === "unknown" ? 1 : 0;
+  };
 
-    const themeMatches = (p: CandidateRow): boolean =>
-      p.terrain_class === req.theme;
+  const byThemeThenScenic = (a: CandidateRow, b: CandidateRow): number => {
+    const t = Number(themeMatches(b)) - Number(themeMatches(a));
+    if (t !== 0) return t;
+    return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
+  };
 
-    // Tiebreak: theme-matching terrain first, then higher scenic score.
-    const byThemeThenScenic = (a: CandidateRow, b: CandidateRow): number => {
-      const t = Number(themeMatches(b)) - Number(themeMatches(a));
-      if (t !== 0) return t;
-      return (b.scenic_score ?? 5) - (a.scenic_score ?? 5);
-    };
-
-    const rankRows = (rows: CandidateRow[]): CandidateRow[] => {
-      if (lunchPref === "required") {
-        // Lunch stops only; best theme-fit + scenic first.
-        return rows.filter((p) => p.is_lunch_stop).sort(byThemeThenScenic);
-      }
-      if (lunchPref === "none") {
-        // Non-lunch first; users picking "none" want viewpoints, peaks, or
-        // watercourses rather than another pub.
-        return [...rows].sort((a, b) => {
-          const lunchDelta = Number(a.is_lunch_stop) - Number(b.is_lunch_stop);
-          if (lunchDelta !== 0) return lunchDelta;
-          return byThemeThenScenic(a, b);
-        });
-      }
-      // preferred: lunch stops first, then best theme-fit + scenic within tier.
-      return [...rows].sort((a, b) => {
-        const lunchDelta = Number(b.is_lunch_stop) - Number(a.is_lunch_stop);
-        if (lunchDelta !== 0) return lunchDelta;
+  if (lunchPref === "required") {
+    // Must be a lunch stop AND not verified-closed on the walker's date.
+    // "unknown" passes through (the UI flags it as unverified rather than
+    // dropping the route entirely — which would leave too many users empty
+    // when OSM has no opening_hours data).
+    return rows
+      .filter((p) => p.is_lunch_stop)
+      .filter((p) => lunchtimeFor(p) !== "closed")
+      .sort((a, b) => {
+        const o = openingRank(b) - openingRank(a);
+        if (o !== 0) return o;
         return byThemeThenScenic(a, b);
       });
-    };
-
-    let poiRows = rankRows(await fetchPois(1500));
-    if (poiRows.length === 0) {
-      poiRows = rankRows(await fetchPois(2500));
+  }
+  if (lunchPref === "none") {
+    // Non-lunch first; users picking "none" want viewpoints, peaks, or
+    // watercourses rather than another pub.
+    return [...rows].sort((a, b) => {
+      const lunchDelta = Number(a.is_lunch_stop) - Number(b.is_lunch_stop);
+      if (lunchDelta !== 0) return lunchDelta;
+      return byThemeThenScenic(a, b);
+    });
+  }
+  // preferred: lunch stops first, then opening status, then theme/scenic.
+  return [...rows].sort((a, b) => {
+    const lunchDelta = Number(b.is_lunch_stop) - Number(a.is_lunch_stop);
+    if (lunchDelta !== 0) return lunchDelta;
+    // Within the lunch-stop tier, prefer verified-open > unknown > closed.
+    if (a.is_lunch_stop && b.is_lunch_stop) {
+      const o = openingRank(b) - openingRank(a);
+      if (o !== 0) return o;
     }
+    return byThemeThenScenic(a, b);
+  });
+}
 
-    const poi: MidpointPoi | null =
-      poiRows.length > 0
-        ? {
-            id: poiRows[0].id,
-            name: poiRows[0].name,
-            type: poiRows[0].type,
-            lng: poiRows[0].longitude,
-            lat: poiRows[0].latitude,
-            scenicScore: poiRows[0].scenic_score ?? 5,
-            terrainClass: poiRows[0].terrain_class,
-            isLunchStop: poiRows[0].is_lunch_stop,
-          }
-        : null;
+/** Fetch POI candidates around `midpoint`, ranked per lunch preference, with
+ *  one widening from 1.5 km → 2.5 km if the primary band is empty. */
+async function findCandidatePoi(
+  midpoint: Coord,
+  req: LoopRequest,
+): Promise<MidpointPoi | null> {
+  const sb = getAdminClient();
+  const fetchPois = async (bandHiM: number): Promise<CandidateRow[]> => {
+    const res = await sb.rpc("candidate_midpoint_pois", {
+      start_lng: midpoint[0],
+      start_lat: midpoint[1],
+      // Theme-AGNOSTIC — the pois table's terrain_class is uniformly 'mixed'
+      // so the SQL theme branch matches almost nothing. We fetch a generous
+      // candidate set and use terrain_class as a soft JS tiebreak instead;
+      // it auto-activates once the terrain backfill is fixed.
+      theme_filter: "any",
+      band_lo_m: 0,
+      band_hi_m: bandHiM,
+      max_candidates: 40,
+    });
+    return (res.data ?? []) as CandidateRow[];
+  };
 
-    candidates.push({ coords: r.coords, distanceM: r.distanceM, midpoint, poi });
+  let poiRows = rankPoiCandidates(await fetchPois(1500), req);
+  if (poiRows.length === 0) {
+    poiRows = rankPoiCandidates(await fetchPois(2500), req);
+  }
+  if (poiRows.length === 0) return null;
+  const top = poiRows[0];
+  return {
+    id: top.id,
+    name: top.name,
+    type: top.type,
+    lng: top.longitude,
+    lat: top.latitude,
+    scenicScore: top.scenic_score ?? 5,
+    terrainClass: top.terrain_class,
+    isLunchStop: top.is_lunch_stop,
+    viaPoi: false, // set true after a successful route-through
+    openingHours: top.opening_hours,
+    openingStatus: evaluateOpeningStatus(top.opening_hours, req.walkDate),
+  };
+}
+
+/**
+ * Build one round_trip candidate for a single seed. Encapsulates the GH call,
+ * the ±30% distance filter, midpoint extraction, POI search, and the optional
+ * re-route-through-POI pass that makes "via {pub}" honest.
+ *
+ * Returns null when:
+ *   - GH produced no route,
+ *   - the route is more than ±30% off target km,
+ *   - or lunchStop=required and no open-or-unverified lunch POI was found in
+ *     either the 1.5 km or 2.5 km band (no silent synthetic fallback — the
+ *     walker explicitly asked for a pub).
+ */
+async function buildRawCandidate(
+  req: LoopRequest,
+  seed: number,
+  targetM: number,
+): Promise<RawCandidate | null> {
+  const raw = await callGraphhopperRoundTrip(
+    req.startLat,
+    req.startLng,
+    targetM,
+    seed,
+  );
+  if (!raw) return null;
+  const ratio = Math.abs(raw.distanceM - targetM) / targetM;
+  if (ratio > 0.30) return null;
+
+  let coords = raw.coords;
+  let distanceM = raw.distanceM;
+  const midpoint = routeMidpointCoord(coords);
+
+  const poi = await findCandidatePoi(midpoint, req);
+  const lunchPref = req.lunchStop ?? "preferred";
+
+  // Bail hard on a "required" lunch stop with no real POI — silently subbing
+  // in a synthetic midpoint here is exactly the failure mode the audit
+  // flagged. Better to let the seed produce nothing and surface a clean
+  // 404 to the user than ship a misleading route.
+  if (!poi && lunchPref === "required") return null;
+
+  // A — Route the loop THROUGH the chosen POI so "via {name}" is honest.
+  // ghAlternativeLoop produces an out-one-way-back-another loop through a
+  // single waypoint. We replace the polyline if the new distance is still
+  // within ±30% of target; otherwise keep the original round_trip and leave
+  // viaPoi=false so the UI says "near" rather than "via".
+  let viaPoi = false;
+  if (poi) {
+    const reRouted = await ghAlternativeLoop(
+      [req.startLng, req.startLat],
+      [poi.lng, poi.lat],
+    );
+    if (reRouted) {
+      const newRatio = Math.abs(reRouted.distanceM - targetM) / targetM;
+      if (newRatio <= 0.30) {
+        coords = reRouted.coords;
+        distanceM = reRouted.distanceM;
+        viaPoi = true;
+      }
+    }
+    if (viaPoi) {
+      poi.viaPoi = true;
+    } else {
+      // Belt-and-braces: also re-check geometrically. The original round_trip
+      // might happen to pass within 50 m of the POI by chance.
+      poi.viaPoi = isPoiOnPolyline(coords, [poi.lng, poi.lat]);
+    }
   }
 
-  if (candidates.length === 0) return null;
+  const prescore = scoreLoop(
+    {
+      actualKm: distanceM / 1000,
+      roadM: 0,
+      overlap: viaPoi ? 0.1 : 0.05,
+      ascentM: 100,
+      durationMin: (distanceM / 1000) * 12,
+      midpointScenicScore: poi?.scenicScore ?? 5,
+    },
+    req,
+  );
 
-  // Pre-score to find the best candidate; elevation only for the winner.
-  type Scored = Candidate & { prescore: number };
-  const scored: Scored[] = candidates.map((c) => ({
-    ...c,
-    prescore: scoreLoop(
-      {
-        actualKm: c.distanceM / 1000,
-        roadM: 0,
-        overlap: 0.05, // GH round_trip minimises overlap; conservative estimate
-        ascentM: 100,  // neutral pre-elevation guess
-        durationMin: (c.distanceM / 1000) * 12,
-        midpointScenicScore: c.poi?.scenicScore ?? 5,
-      },
-      req,
-    ),
-  }));
-  scored.sort((a, b) => b.prescore - a.prescore);
-  const winner = scored[0];
+  return { seed, coords, distanceM, midpoint, poi, viaPoi: poi?.viaPoi ?? false, prescore };
+}
 
-  // Elevation for the winner only.
-  const elev = await sampleElevation(winner.coords);
+/**
+ * Materialise a RawCandidate into a full LoopResult: real elevation,
+ * Tobler-timed duration, final score, cache key. Network: 1 Open-Meteo call.
+ */
+async function materializeCandidate(
+  req: LoopRequest,
+  c: RawCandidate,
+): Promise<LoopResult> {
+  const elev = await sampleElevation(c.coords);
   const { ascentM } = integrateElevation(elev);
-  const durationHours = toblerHoursForProfile(winner.coords, elev);
+  const durationHours = toblerHoursForProfile(c.coords, elev);
   // Defence-in-depth: toblerHoursForProfile now clamps slope and skips
   // sub-metre segments, so a blow-up shouldn't reach here — but cap at 24 h
   // and fall back to a Naismith estimate if a non-finite value ever slips
@@ -563,48 +704,88 @@ export async function generateLoop(req: LoopRequest): Promise<LoopResult | null>
   const rawDurationMin = durationHours * 60;
   const durationMin = Number.isFinite(rawDurationMin)
     ? Math.min(Math.round(rawDurationMin), 24 * 60)
-    : Math.round((winner.distanceM / 1000) * 15); // Naismith fallback
+    : Math.round((c.distanceM / 1000) * 15);
 
   const finalScore = scoreLoop(
     {
-      actualKm: winner.distanceM / 1000,
+      actualKm: c.distanceM / 1000,
       roadM: 0,
-      overlap: 0.05,
+      overlap: c.viaPoi ? 0.1 : 0.05,
       ascentM,
       durationMin,
-      midpointScenicScore: winner.poi?.scenicScore ?? 5,
+      midpointScenicScore: c.poi?.scenicScore ?? 5,
     },
     req,
   );
 
-  // Synthesise a midpoint POI if none was found near the midpoint.
-  const midpointPoi: MidpointPoi = winner.poi ?? {
-    id: -1,
-    name: "Route midpoint",
-    type: "viewpoint",
-    lng: winner.midpoint[0],
-    lat: winner.midpoint[1],
-    scenicScore: 5,
-    terrainClass: null,
-    isLunchStop: false,
-  };
-
-  const geometry: GeoJSON.LineString = {
-    type: "LineString",
-    coordinates: winner.coords,
-  };
-
   return {
-    cacheKey: buildCacheKey(req),
-    geometry,
-    actualKm: Math.round((winner.distanceM / 1000) * 10) / 10,
+    cacheKey: buildCacheKey(req, c.seed),
+    geometry: { type: "LineString", coordinates: c.coords },
+    actualKm: Math.round((c.distanceM / 1000) * 10) / 10,
     ascentM,
     durationMin,
-    midpointPoi,
+    midpointPoi: c.poi ?? synthesizeMidpoint(c.midpoint),
     score: Math.round(finalScore * 100) / 100,
     narrative: null,
     cached: false,
   };
+}
+
+const ROUND_TRIP_SEEDS = [0, 1, 2, 42];
+
+/**
+ * Generate a single best loop without consulting the cache. Used by SEO
+ * seeding and the legacy single-route API path. ~1-3 s wallclock.
+ */
+export async function generateLoop(req: LoopRequest): Promise<LoopResult | null> {
+  const targetM = req.targetKm * 1000;
+  const rawCandidates = (
+    await Promise.all(
+      ROUND_TRIP_SEEDS.map((seed) => buildRawCandidate(req, seed, targetM)),
+    )
+  ).filter((c): c is RawCandidate => c !== null);
+  if (rawCandidates.length === 0) return null;
+  rawCandidates.sort((a, b) => b.prescore - a.prescore);
+  // Elevation for the winner only — keep parity with the pre-refactor cost.
+  return materializeCandidate(req, rawCandidates[0]);
+}
+
+/**
+ * Generate up to 3 distinct loop candidates from one request. Each gets its
+ * own polyline (often a different GH seed), its own POI, its own elevation
+ * profile + score, and its own cache key with seed suffix so all three are
+ * independently shareable.
+ *
+ * Wallclock: ~3 s (4 GH calls + 3 elevation calls, all parallel). Returns an
+ * empty array — never null — when every seed produced no usable candidate.
+ */
+export async function generateCandidates(
+  req: LoopRequest,
+): Promise<LoopResult[]> {
+  const targetM = req.targetKm * 1000;
+  const rawCandidates = (
+    await Promise.all(
+      ROUND_TRIP_SEEDS.map((seed) => buildRawCandidate(req, seed, targetM)),
+    )
+  ).filter((c): c is RawCandidate => c !== null);
+  if (rawCandidates.length === 0) return [];
+
+  // Sort by pre-elevation score, then take up to 3 with a simple diversity
+  // filter: skip any candidate whose midpoint coord is within 300 m of an
+  // already-accepted candidate's midpoint. Stops the UI from showing three
+  // near-identical loops when GH seeds happen to produce them.
+  rawCandidates.sort((a, b) => b.prescore - a.prescore);
+  const picked: RawCandidate[] = [];
+  for (const c of rawCandidates) {
+    if (picked.length >= 3) break;
+    const tooClose = picked.some(
+      (p) => haversineKm(p.midpoint, c.midpoint) < 0.3,
+    );
+    if (tooClose) continue;
+    picked.push(c);
+  }
+  // Materialise all picked in parallel — elevation is the only expensive step.
+  return Promise.all(picked.map((c) => materializeCandidate(req, c)));
 }
 
 // ─── Cache-aware public entry ───────────────────────────────────────────────
@@ -674,14 +855,8 @@ async function generateLoopThroughWaypoints(
   // findCached recomputes the midpoint for cached rows with no POI FK.
   const mid = routeMidpointCoord(coords);
   const midpointPoi: MidpointPoi = {
-    id: -1,
-    name: "Route midpoint",
-    type: "viewpoint",
-    lng: mid[0],
-    lat: mid[1],
+    ...synthesizeMidpoint(mid),
     scenicScore: 6,
-    terrainClass: null,
-    isLunchStop: false,
   };
 
   return {
@@ -702,7 +877,7 @@ export async function findOrGenerate(
 ): Promise<LoopResult | null> {
   const cacheKey = buildCacheKey(req);
 
-  const cached = await findCached(cacheKey);
+  const cached = await findCached(cacheKey, req.walkDate);
   if (cached) return applyCustomizations(cached, req);
 
   // Must-pass stops switch the engine from round_trip to route-through.
@@ -717,6 +892,58 @@ export async function findOrGenerate(
   // customisations to what we return.
   await persistRoute(fresh, req);
   return applyCustomizations(fresh, req);
+}
+
+/**
+ * Multi-route entry point: generates (or, for already-known seeds, reuses) up
+ * to 3 candidate loops for one request. Each candidate is independently
+ * persisted under its own seed-suffixed cache key so /walks/r/[slug] continues
+ * to work for any of the three after the request returns.
+ *
+ * - Waypoint requests fall back to the single-route path: the walker's
+ *   chosen stops define exactly one geometry, so there is nothing to vary.
+ * - When the cache holds at least one matching seed, it is reused; missing
+ *   seeds are generated fresh in the same pass (so a returning user gets an
+ *   instant first card and the others trickle in).
+ * - Empty result means even seed 0 produced nothing usable (e.g. required
+ *   lunch stop with no candidates in the area). The API surfaces this as a
+ *   "no loop found" 404, never a silent synthetic fallback.
+ */
+export async function findOrGenerateCandidates(
+  req: LoopRequest,
+): Promise<LoopResult[]> {
+  // Waypoint routes only produce one geometry; no point pretending otherwise.
+  if (req.waypoints && req.waypoints.length > 0) {
+    const single = await findOrGenerate(req);
+    return single ? [single] : [];
+  }
+
+  // Try the cache for each candidate seed first. A returning user (same
+  // start + km + theme + lunch) gets instant results; misses fall through
+  // to the live generator. Seeds 0/1/2 are the three we expose to UI; seed
+  // 42 is held in reserve as a tiebreaker in generateCandidates.
+  const lookupSeeds = [0, 1, 2];
+  const cachedHits = await Promise.all(
+    lookupSeeds.map((seed) => findCached(buildCacheKey(req, seed), req.walkDate)),
+  );
+  const cached = cachedHits.filter((c): c is LoopResult => c !== null);
+
+  // If we got all three from cache, we're done — apply customisations and
+  // return without touching GraphHopper.
+  if (cached.length === lookupSeeds.length) {
+    return cached.map((c) => applyCustomizations(c, req));
+  }
+
+  // Otherwise regenerate the whole set. We could be smarter and only fill
+  // the gaps, but seed-by-seed cache fills race with each other on the
+  // diversity filter — generating all three together makes the result
+  // deterministic and the diversity check meaningful.
+  const fresh = await generateCandidates(req);
+  if (fresh.length === 0) return [];
+
+  // Persist all candidates so their share permalinks work independently.
+  await Promise.all(fresh.map((f) => persistRoute(f, req)));
+  return fresh.map((f) => applyCustomizations(f, req));
 }
 
 async function persistRoute(loop: LoopResult, req: LoopRequest): Promise<void> {
@@ -797,15 +1024,18 @@ export async function findBySlug(slug: string): Promise<SeoRouteData | null> {
   if (!data || data.length === 0) return null;
   const row = data[0];
   const geometry = JSON.parse(row.geojson) as GeoJSON.LineString;
+  const coords = geometry.coordinates as Coord[];
 
   let midpointLng: number = row.midpoint_lng ?? 0;
   let midpointLat: number = row.midpoint_lat ?? 0;
   if (!midpointLng || !midpointLat) {
-    const coords = geometry.coordinates as [number, number][];
     const mid = routeMidpointCoord(coords);
     midpointLng = mid[0];
     midpointLat = mid[1];
   }
+
+  const openingHours: string | null = row.midpoint_opening_hours ?? null;
+  const viaPoi = isPoiOnPolyline(coords, [midpointLng, midpointLat]);
 
   return {
     cacheKey: row.cache_key,
@@ -822,6 +1052,11 @@ export async function findBySlug(slug: string): Promise<SeoRouteData | null> {
       scenicScore: row.midpoint_scenic_score ?? 5,
       terrainClass: row.midpoint_terrain_class,
       isLunchStop: row.midpoint_is_lunch_stop ?? false,
+      viaPoi,
+      openingHours,
+      // SEO pages serve no specific walker — the open-status is shown as
+      // unknown to all visitors, who can verify their own date in the planner.
+      openingStatus: "unknown",
     },
     score: Number(row.score),
     narrative: row.narrative,
@@ -996,6 +1231,25 @@ function applyCustomizations(loop: LoopResult, req: LoopRequest): LoopResult {
 }
 
 // ─── Geometry helpers ───────────────────────────────────────────────────────
+
+/**
+ * True when the POI's coordinate lies within `thresholdM` of any vertex on
+ * the polyline. We sweep vertices rather than segments — at GH's typical
+ * ~30 m vertex spacing this catches "the loop passes the pub door" without
+ * the cost of a proper point-to-segment perpendicular distance calculation.
+ *
+ * 50 m is a deliberate buffer: GraphHopper snaps waypoints to the nearest
+ * routing vertex, which can be a few metres off the pub's actual coordinate
+ * (the OSM node is often the building centroid, not the road entrance).
+ */
+function isPoiOnPolyline(coords: Coord[], poi: Coord, thresholdM = 50): boolean {
+  if (coords.length === 0) return false;
+  const thresholdKm = thresholdM / 1000;
+  for (const v of coords) {
+    if (haversineKm(v, poi) <= thresholdKm) return true;
+  }
+  return false;
+}
 
 /**
  * Return the coordinate at ~50% cumulative distance along a polyline.
